@@ -74,23 +74,6 @@ func (c *Config) Save(configPath string) error {
 	return nil
 }
 
-// Validate validates the configuration
-func (c *Config) Validate() error {
-	if c.APIKey == "" {
-		return fmt.Errorf("API key is required")
-	}
-
-	if c.BaseURL == "" {
-		return fmt.Errorf("base URL is required")
-	}
-
-	if c.Timeout <= 0 {
-		return fmt.Errorf("timeout must be positive")
-	}
-
-	return nil
-}
-
 // GetConfigPath returns the default config file path
 func GetConfigPath() string {
 	homeDir, err := os.UserHomeDir()
@@ -108,11 +91,6 @@ func (c *Config) SetAPIKey(apiKey string) {
 // GetAPIKey returns the API key
 func (c *Config) GetAPIKey() string {
 	return c.APIKey
-}
-
-// IsConfigured checks if the configuration is complete
-func (c *Config) IsConfigured() bool {
-	return c.APIKey != ""
 }
 
 // SetOwnerEmail sets the owner email in the configuration
@@ -135,6 +113,11 @@ func (c *Config) GetBoardID() string {
 	return c.BoardID
 }
 
+// IsConfigured checks if the configuration is complete
+func (c *Config) IsConfigured() bool {
+	return c.APIKey != "" && c.OwnerEmail != "" && c.BoardID != ""
+}
+
 // GetDefaultConfigPath returns the default configuration file path
 func GetDefaultConfigPath() string {
 	homeDir, err := os.UserHomeDir()
@@ -142,22 +125,4 @@ func GetDefaultConfigPath() string {
 		return "./monday-config.json"
 	}
 	return filepath.Join(homeDir, ".config", "monday-cli", "config.json")
-}
-
-// CreateConfigIfNotExists creates a configuration file if it doesn't exist
-func CreateConfigIfNotExists(configPath string) (*Config, error) {
-	config, err := LoadConfig(configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// If API key is not set, prompt user
-	if !config.IsConfigured() {
-		fmt.Println("Monday.com API key not found in configuration.")
-		fmt.Println("Please set your API key using the following command:")
-		fmt.Printf("monday-cli config set-api-key YOUR_API_KEY\n")
-		fmt.Println("\nYou can get your API key from: https://auth.monday.com/users/sign_in")
-	}
-
-	return config, nil
 }

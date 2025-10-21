@@ -231,7 +231,7 @@ func getClient() (*monday.Client, error) {
 	}
 
 	if !config.IsConfigured() {
-		return nil, fmt.Errorf("configuration error: API key is required")
+		return nil, fmt.Errorf("configuration error: API key, owner email, and board ID are required")
 	}
 
 	return monday.NewClient(config.GetAPIKey(), config.Timeout), nil
