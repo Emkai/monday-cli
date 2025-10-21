@@ -336,6 +336,10 @@ func getStatusIcon(status string) string {
 		return "🚫"
 	case strings.Contains(status, "review"):
 		return "👀"
+	case strings.Contains(status, "testing") || strings.Contains(status, "not started"):
+		return "🧪"
+	case strings.Contains(status, "removed"):
+		return "🗑️"
 	default:
 		return "📋"
 	}
@@ -347,9 +351,9 @@ func getPriorityIcon(priority string) string {
 	case strings.Contains(priority, "critical"):
 		return "🔴"
 	case strings.Contains(priority, "high"):
-		return "🟠"
-	case strings.Contains(priority, "medium"):
 		return "🟡"
+	case strings.Contains(priority, "medium"):
+		return "🔵"
 	case strings.Contains(priority, "low"):
 		return "🟢"
 	default:
@@ -368,9 +372,9 @@ func getTypeIcon(taskType string) string {
 		return "🧪"
 	case strings.Contains(taskType, "security"):
 		return "🔒"
-	case strings.Contains(taskType, "improvement"):
+	case strings.Contains(taskType, "quality"):
 		return "📈"
-	case strings.Contains(taskType, "documentation"):
+	case strings.Contains(taskType, "other"):
 		return "📝"
 	default:
 		return "📝"
