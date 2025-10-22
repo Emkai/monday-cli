@@ -37,6 +37,8 @@ jobs:
       run: |
         # Create release directory
         mkdir -p release
+
+        go mod tidy
         
         # Build for different platforms
         GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/monday-cli-linux-amd64 .
