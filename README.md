@@ -6,6 +6,7 @@ A command-line tool for viewing your Monday.com tasks.
 
 1. **Build the tool:**
 ```bash
+go mod tidy
 go build -o monday-cli .
 ```
 
