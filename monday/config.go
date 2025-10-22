@@ -14,6 +14,7 @@ type Config struct {
 	Timeout    int    `json:"timeout_seconds"`
 	OwnerEmail string `json:"owner_email"`
 	BoardID    string `json:"board_id"`
+	SprintID   string `json:"sprint_id"`
 }
 
 // DefaultConfig returns the default configuration
@@ -23,6 +24,7 @@ func DefaultConfig() *Config {
 		Timeout:    30,
 		OwnerEmail: "",
 		BoardID:    "",
+		SprintID:   "",
 	}
 }
 
@@ -116,6 +118,16 @@ func (c *Config) GetBoardID() string {
 // IsConfigured checks if the configuration is complete
 func (c *Config) IsConfigured() bool {
 	return c.APIKey != "" && c.OwnerEmail != "" && c.BoardID != ""
+}
+
+// SetSprintID sets the sprint ID in the configuration
+func (c *Config) SetSprintID(sprintID string) {
+	c.SprintID = sprintID
+}
+
+// GetSprintID returns the sprint ID
+func (c *Config) GetSprintID() string {
+	return c.SprintID
 }
 
 // GetDefaultConfigPath returns the default configuration file path

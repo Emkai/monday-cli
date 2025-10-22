@@ -132,9 +132,27 @@ func (c *Client) GetBoard(boardID string) (*Board, error) {
 
 // GetBoardItemsByOwner retrieves items from a specific board filtered by owner using pagination
 func (c *Client) GetBoardItemsByOwner(boardID, ownerEmail string) ([]Item, error) {
+	// First, get the board to find the owner column ID
+	board, err := c.GetBoard(boardID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get board: %w", err)
+	}
+
+	// Find the owner column ID
+	var ownerColumnID string
+	for _, column := range board.Columns {
+		if strings.Contains(strings.ToLower(column.Title), "owner") {
+			ownerColumnID = column.ID
+			break
+		}
+	}
+	if ownerColumnID == "" {
+		return nil, fmt.Errorf("owner column not found in board")
+	}
+
 	var allItems []Item
 	cursor := ""
-	limit := 50 // Increased limit to get more items per request
+	limit := 25 // Smaller page size for better performance
 
 	for {
 		query := `
@@ -188,33 +206,29 @@ func (c *Client) GetBoardItemsByOwner(boardID, ownerEmail string) ([]Item, error
 			return nil, fmt.Errorf("board not found")
 		}
 
-		// Add items to our collection
-		allItems = append(allItems, result.Boards[0].ItemsPage.Items...)
+		// Filter items by owner and add to collection
+		for _, item := range result.Boards[0].ItemsPage.Items {
+			for _, cv := range item.ColumnValues {
+				if cv.ID == ownerColumnID && strings.Contains(strings.ToLower(cv.Text), strings.ToLower(ownerEmail)) {
+					allItems = append(allItems, item)
+					break
+				}
+			}
+		}
 
-		// Check if we have more pages
+		// Check if we have enough items or no more pages
 		cursor = result.Boards[0].ItemsPage.Cursor
 		if cursor == "" || len(result.Boards[0].ItemsPage.Items) < limit {
 			break
 		}
-	}
-
-	// Filter items by owner
-	var filteredItems []Item
-	for _, item := range allItems {
-		for _, cv := range item.ColumnValues {
-			if strings.Contains(strings.ToLower(cv.ID), "owner") &&
-				strings.Contains(strings.ToLower(cv.Text), strings.ToLower(ownerEmail)) {
-				filteredItems = append(filteredItems, item)
-				break
-			}
-		}
+		fmt.Printf("Fetching next page... currently %d items for %s\n", len(allItems), ownerEmail)
 	}
 
 	// Sort items by status, priority, then type
-	sort.Slice(filteredItems, func(i, j int) bool {
+	sort.Slice(allItems, func(i, j int) bool {
 		// Get status, priority, and type for both items
-		statusI := getSortableStatus(filteredItems[i])
-		statusJ := getSortableStatus(filteredItems[j])
+		statusI := getSortableStatus(allItems[i])
+		statusJ := getSortableStatus(allItems[j])
 
 		// First sort by status
 		if statusI != statusJ {
@@ -222,19 +236,143 @@ func (c *Client) GetBoardItemsByOwner(boardID, ownerEmail string) ([]Item, error
 		}
 
 		// Then by priority
-		priorityI := getSortablePriority(filteredItems[i])
-		priorityJ := getSortablePriority(filteredItems[j])
+		priorityI := getSortablePriority(allItems[i])
+		priorityJ := getSortablePriority(allItems[j])
 		if priorityI != priorityJ {
 			return priorityI < priorityJ
 		}
 
 		// Finally by type
-		typeI := getSortableType(filteredItems[i])
-		typeJ := getSortableType(filteredItems[j])
+		typeI := getSortableType(allItems[i])
+		typeJ := getSortableType(allItems[j])
 		return typeI < typeJ
 	})
 
-	return filteredItems, nil
+	return allItems, nil
+}
+
+func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStatus string) error {
+	// First, get the board to find the status column ID
+	board, err := c.GetBoard(boardID)
+	if err != nil {
+		return fmt.Errorf("failed to get board: %w", err)
+	}
+
+	// Find the status column ID
+	var statusColumnID string
+	for _, column := range board.Columns {
+		if strings.Contains(strings.ToLower(column.Title), "status") {
+			statusColumnID = column.ID
+			break
+		}
+	}
+	if statusColumnID == "" {
+		return fmt.Errorf("status column not found in board")
+	}
+
+	query := `
+		mutation UpdateTaskStatus($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+			change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) {
+				id
+			}
+		}
+	`
+
+	// Use the task's actual ID
+	itemID := task.ID
+
+	// Create the JSON value for status column - Monday.com expects a JSON string
+	statusValue := fmt.Sprintf(`{"label": "%s"}`, newStatus)
+
+	variables := map[string]interface{}{
+		"boardId":  boardID,
+		"itemId":   itemID,
+		"columnId": statusColumnID,
+		"value":    statusValue,
+	}
+
+	fmt.Println(variables)
+	resp, err := c.ExecuteQuery(query, variables)
+	if err != nil {
+		return err
+	}
+
+	if len(resp.Errors) > 0 {
+		return fmt.Errorf("failed to update task status: %v", resp.Errors)
+	}
+
+	fmt.Printf("✅ Task %s status updated to %s\n", task.ID, newStatus)
+
+	return nil
+}
+
+func (c *Client) CreateTask(boardID, ownerEmail, taskName string) error {
+	// First get the user ID for the owner email
+	userQuery := `
+		query GetUser($emails: [String!]!) {
+			users(emails: $emails) {
+				id
+			}
+		}
+	`
+
+	userVars := map[string]interface{}{
+		"emails": []string{ownerEmail},
+	}
+
+	userResp, err := c.ExecuteQuery(userQuery, userVars)
+	if err != nil {
+		return fmt.Errorf("failed to get user ID: %w", err)
+	}
+
+	if len(userResp.Errors) > 0 {
+		return fmt.Errorf("failed to get user ID: %v", userResp.Errors)
+	}
+
+	var userData struct {
+		Users []struct {
+			ID string `json:"id"`
+		} `json:"users"`
+	}
+	if err := json.Unmarshal(userResp.Data, &userData); err != nil {
+		return fmt.Errorf("failed to parse user data: %w", err)
+	}
+
+	if len(userData.Users) == 0 {
+		return fmt.Errorf("user not found for email: %s", ownerEmail)
+	}
+
+	userID := userData.Users[0].ID
+
+	query := `
+		mutation CreateTask($boardId: ID!, $itemName: String!, $columnValues: JSON!) {
+			create_item(board_id: $boardId, item_name: $itemName, column_values: $columnValues) {
+				id
+			}
+		}
+	`
+
+	// Create column values JSON with owner in the format Monday.com expects
+	columnValues := fmt.Sprintf(`{"task_owner": {"personsAndTeams":[{"id":%s,"kind":"person"}],"changed_at":"%s"}}`,
+		userID,
+		time.Now().Format(time.RFC3339))
+
+	variables := map[string]interface{}{
+		"boardId":      boardID,
+		"itemName":     taskName,
+		"columnValues": columnValues,
+	}
+
+	resp, err := c.ExecuteQuery(query, variables)
+	if err != nil {
+		return fmt.Errorf("failed to create task: %w", err)
+	}
+
+	if len(resp.Errors) > 0 {
+		return fmt.Errorf("failed to create task: %v", resp.Errors)
+	}
+
+	return nil
 }
 
 // Helper functions for sorting
@@ -251,7 +389,7 @@ func getSortableStatus(item Item) int {
 				return 3 // Stuck third
 			case strings.Contains(status, "review"):
 				return 4 // Review fourth
-			case strings.Contains(status, "todo") || strings.Contains(status, "not started"):
+			case strings.Contains(status, "testing") || strings.Contains(status, "not started"):
 				return 5 // Todo last
 			default:
 				return 6 // Unknown status last
