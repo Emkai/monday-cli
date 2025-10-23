@@ -231,9 +231,9 @@ func (c *CLI) HandleTaskCommand() {
 		if len(c.command.Args) < 2 {
 			fmt.Println("Usage: monday-cli task create <task-name> [flags]")
 			fmt.Println("Flags:")
-			fmt.Println("  -status <status>     Set task status (e.g., 'In Progress', 'Done')")
-			fmt.Println("  -priority <priority> Set task priority (e.g., 'High', 'Medium', 'Low')")
-			fmt.Println("  -type <type>         Set task type (e.g., 'Bug', 'Feature', 'Test')")
+			fmt.Println("  -status, -s <status>     Set task status (done/d, in progress/p, stuck/s, etc.)")
+			fmt.Println("  -priority, -p <priority> Set task priority (critical/c, high/h, medium/m, low/l)")
+			fmt.Println("  -type, -t <type>         Set task type (bug/b, feature/f, test/t, security/s, improvement/i)")
 			return
 		}
 
@@ -243,12 +243,27 @@ func (c *CLI) HandleTaskCommand() {
 		var status, priority, taskType string
 		for _, flag := range c.command.Flags {
 			switch flag.Flag {
-			case "-status":
-				status = flag.Value
-			case "-priority":
-				priority = flag.Value
-			case "-type":
-				taskType = flag.Value
+			case "-status", "-s":
+				status = getStatusValue(flag.Value)
+				if status == "" {
+					fmt.Printf("❌ Invalid status: %s\n", flag.Value)
+					fmt.Println("Valid status values: done(d), in progress(p), stuck(s), waiting review(r), ready for testing(t), removed(rm)")
+					os.Exit(1)
+				}
+			case "-priority", "-p":
+				priority = getPriorityValue(flag.Value)
+				if priority == "" {
+					fmt.Printf("❌ Invalid priority: %s\n", flag.Value)
+					fmt.Println("Valid priority values: critical(c), high(h), medium(m), low(l)")
+					os.Exit(1)
+				}
+			case "-type", "-t":
+				taskType = getTypeValue(flag.Value)
+				if taskType == "" {
+					fmt.Printf("❌ Invalid type: %s\n", flag.Value)
+					fmt.Println("Valid type values: bug(b), feature(f), test(t), security(s), quality(q)")
+					os.Exit(1)
+				}
 			}
 		}
 
@@ -264,7 +279,7 @@ func (c *CLI) HandleTaskCommand() {
 		}
 
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
-		err = client.CreateTask(c.config.GetBoardID(), c.config.GetUserEmail(), taskName, status, priority, taskType)
+		err = client.CreateTask(c.config.GetBoardID(), c.config.GetUserInfo().ID, taskName, status, priority, taskType)
 		if err != nil {
 			fmt.Printf("❌ Error creating task: %v\n", err)
 			os.Exit(1)
@@ -316,7 +331,7 @@ func getStatusValue(status string) string {
 		return "In Progress"
 	case "stuck", "s":
 		return "Stuck"
-	case "waiting review", "r":
+	case "waiting for review", "r":
 		return "Waiting for review"
 	case "ready for testing", "t":
 		return "Ready for testing"
@@ -327,14 +342,46 @@ func getStatusValue(status string) string {
 	}
 }
 
+func getPriorityValue(priority string) string {
+	switch priority {
+	case "critical", "c":
+		return "Critical"
+	case "high", "h":
+		return "High"
+	case "medium", "m":
+		return "Medium"
+	case "low", "l":
+		return "Low"
+	default:
+		return ""
+	}
+}
+
+func getTypeValue(taskType string) string {
+	switch taskType {
+	case "bug", "b":
+		return "Bug"
+	case "feature", "f":
+		return "Feature"
+	case "test", "t":
+		return "Test"
+	case "security", "s":
+		return "Security"
+	case "quality", "q":
+		return "Quality"
+	default:
+		return ""
+	}
+}
+
 func (c *CLI) HelpTaskCommand() {
 	fmt.Println("Task Commands:")
 	fmt.Println("  task show (s) <task-id> Show a specific task")
 	fmt.Println("  task create (c) <task-name> [flags] Create a new task")
 	fmt.Println("    Flags:")
-	fmt.Println("      -status <status>     Set task status (e.g., 'In Progress', 'Done')")
-	fmt.Println("      -priority <priority> Set task priority (e.g., 'High', 'Medium', 'Low')")
-	fmt.Println("      -type <type>         Set task type (e.g., 'Bug', 'Feature', 'Test')")
+	fmt.Println("      -status, -s <status>     Set task status (done/d, in progress/p, stuck/s, etc.)")
+	fmt.Println("      -priority, -p <priority> Set task priority (critical/c, high/h, medium/m, low/l)")
+	fmt.Println("      -type, -t <type>         Set task type (bug/b, feature/f, test/t, security/s, improvement/i)")
 	fmt.Println("  task edit (e) <task-id> <new-status> Edit a specific task")
 }
 

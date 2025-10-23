@@ -310,43 +310,7 @@ func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStat
 	return nil
 }
 
-func (c *Client) CreateTask(boardID, ownerEmail, taskName, status, priority, taskType string) error {
-	// First get the user ID for the owner email
-	userQuery := `
-		query GetUser($emails: [String!]!) {
-			users(emails: $emails) {
-				id
-			}
-		}
-	`
-
-	userVars := map[string]interface{}{
-		"emails": []string{ownerEmail},
-	}
-
-	userResp, err := c.ExecuteQuery(userQuery, userVars)
-	if err != nil {
-		return fmt.Errorf("failed to get user ID: %w", err)
-	}
-
-	if len(userResp.Errors) > 0 {
-		return fmt.Errorf("failed to get user ID: %v", userResp.Errors)
-	}
-
-	var userData struct {
-		Users []struct {
-			ID string `json:"id"`
-		} `json:"users"`
-	}
-	if err := json.Unmarshal(userResp.Data, &userData); err != nil {
-		return fmt.Errorf("failed to parse user data: %w", err)
-	}
-
-	if len(userData.Users) == 0 {
-		return fmt.Errorf("user not found for email: %s", ownerEmail)
-	}
-
-	userID := userData.Users[0].ID
+func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskType string) error {
 
 	// Get board to find column IDs
 	board, err := c.GetBoard(boardID)
