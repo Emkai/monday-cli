@@ -229,18 +229,47 @@ func (c *CLI) HandleTaskCommand() {
 		return
 	case "create", "c":
 		if len(c.command.Args) < 2 {
-			fmt.Println("Usage: monday-cli task create <task-name>")
+			fmt.Println("Usage: monday-cli task create <task-name> [flags]")
+			fmt.Println("Flags:")
+			fmt.Println("  -status <status>     Set task status (e.g., 'In Progress', 'Done')")
+			fmt.Println("  -priority <priority> Set task priority (e.g., 'High', 'Medium', 'Low')")
+			fmt.Println("  -type <type>         Set task type (e.g., 'Bug', 'Feature', 'Test')")
 			return
 		}
 
-		fmt.Printf("Creating task: %s\n", c.command.Args[1])
+		taskName := c.command.Args[1]
+
+		// Parse flags
+		var status, priority, taskType string
+		for _, flag := range c.command.Flags {
+			switch flag.Flag {
+			case "-status":
+				status = flag.Value
+			case "-priority":
+				priority = flag.Value
+			case "-type":
+				taskType = flag.Value
+			}
+		}
+
+		fmt.Printf("Creating task: %s\n", taskName)
+		if status != "" {
+			fmt.Printf("  Status: %s\n", status)
+		}
+		if priority != "" {
+			fmt.Printf("  Priority: %s\n", priority)
+		}
+		if taskType != "" {
+			fmt.Printf("  Type: %s\n", taskType)
+		}
+
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
-		err = client.CreateTask(c.config.GetBoardID(), c.config.GetUserEmail(), c.command.Args[1])
+		err = client.CreateTask(c.config.GetBoardID(), c.config.GetUserEmail(), taskName, status, priority, taskType)
 		if err != nil {
 			fmt.Printf("❌ Error creating task: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("✅ Task %s created\n", c.command.Args[1])
+		fmt.Printf("✅ Task %s created\n", taskName)
 		return
 	case "edit", "e":
 		if len(c.command.Args) < 2 {
@@ -301,6 +330,11 @@ func getStatusValue(status string) string {
 func (c *CLI) HelpTaskCommand() {
 	fmt.Println("Task Commands:")
 	fmt.Println("  task show (s) <task-id> Show a specific task")
+	fmt.Println("  task create (c) <task-name> [flags] Create a new task")
+	fmt.Println("    Flags:")
+	fmt.Println("      -status <status>     Set task status (e.g., 'In Progress', 'Done')")
+	fmt.Println("      -priority <priority> Set task priority (e.g., 'High', 'Medium', 'Low')")
+	fmt.Println("      -type <type>         Set task type (e.g., 'Bug', 'Feature', 'Test')")
 	fmt.Println("  task edit (e) <task-id> <new-status> Edit a specific task")
 }
 

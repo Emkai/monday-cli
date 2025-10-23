@@ -310,7 +310,7 @@ func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStat
 	return nil
 }
 
-func (c *Client) CreateTask(boardID, ownerEmail, taskName string) error {
+func (c *Client) CreateTask(boardID, ownerEmail, taskName, status, priority, taskType string) error {
 	// First get the user ID for the owner email
 	userQuery := `
 		query GetUser($emails: [String!]!) {
@@ -348,6 +348,25 @@ func (c *Client) CreateTask(boardID, ownerEmail, taskName string) error {
 
 	userID := userData.Users[0].ID
 
+	// Get board to find column IDs
+	board, err := c.GetBoard(boardID)
+	if err != nil {
+		return fmt.Errorf("failed to get board: %w", err)
+	}
+
+	// Find column IDs
+	var statusColumnID, priorityColumnID, typeColumnID string
+	for _, column := range board.Columns {
+		title := strings.ToLower(column.Title)
+		if strings.Contains(title, "status") {
+			statusColumnID = column.ID
+		} else if strings.Contains(title, "priority") {
+			priorityColumnID = column.ID
+		} else if strings.Contains(title, "type") {
+			typeColumnID = column.ID
+		}
+	}
+
 	query := `
 		mutation CreateTask($boardId: ID!, $itemName: String!, $columnValues: JSON!) {
 			create_item(board_id: $boardId, item_name: $itemName, column_values: $columnValues) {
@@ -356,10 +375,27 @@ func (c *Client) CreateTask(boardID, ownerEmail, taskName string) error {
 		}
 	`
 
-	// Create column values JSON with owner in the format Monday.com expects
-	columnValues := fmt.Sprintf(`{"task_owner": {"personsAndTeams":[{"id":%s,"kind":"person"}],"changed_at":"%s"}}`,
+	// Create column values JSON with all specified values
+	columnValues := fmt.Sprintf(`{"task_owner": {"personsAndTeams":[{"id":%s,"kind":"person"}],"changed_at":"%s"}`,
 		userID,
 		time.Now().Format(time.RFC3339))
+
+	// Add status if provided
+	if status != "" && statusColumnID != "" {
+		columnValues += fmt.Sprintf(`,"%s": {"label": "%s"}`, statusColumnID, status)
+	}
+
+	// Add priority if provided
+	if priority != "" && priorityColumnID != "" {
+		columnValues += fmt.Sprintf(`,"%s": {"label": "%s"}`, priorityColumnID, priority)
+	}
+
+	// Add type if provided
+	if taskType != "" && typeColumnID != "" {
+		columnValues += fmt.Sprintf(`,"%s": {"label": "%s"}`, typeColumnID, taskType)
+	}
+
+	columnValues += "}"
 
 	variables := map[string]interface{}{
 		"boardId":      boardID,
