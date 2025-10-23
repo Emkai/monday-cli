@@ -21,52 +21,52 @@ go build -o mon .
 
 2. **Configure it:**
 ```bash
-./mon config set-api-key <your-api-key>
-./mon config set-board-id <your-board-id>
-./mon config set-sprint-id <your-sprint-id>  # No implementation for sprints yet, still to come
+mon config set-api-key <your-api-key>
+mon config set-board-id <your-board-id>
+mon config set-sprint-id <your-sprint-id>  # No implementation for sprints yet, still to come
 ```
 
 3. **View your tasks:**
 ```bash
-./mon tasks list
+mon tasks list
 ```
 
 ## 📋 Commands
 
 ### Task Management
-- `./mon tasks list` - Show your cached tasks with local indices
-- `./mon tasks fetch` - Fetch fresh tasks from Monday.com
-- `./mon task show <index>` - Show details of a specific task
-- `./mon task create <name> [flags]` - Create a new task
-- `./mon task edit <index> [flags]` - Edit an existing task
+- `mon tasks list` - Show your cached tasks with local indices
+- `mon tasks fetch` - Fetch fresh tasks from Monday.com
+- `mon task show <index>` - Show details of a specific task
+- `mon task create <name> [flags]` - Create a new task
+- `mon task edit <index> [flags]` - Edit an existing task
 
 ### Configuration
-- `./mon config show` - Display current configuration
-- `./mon config set-api-key <key>` - Set your Monday.com API key
-- `./mon config set-board-id <id>` - Set your board ID
-- `./mon config set-sprint-id <id>` - Set your sprint ID (optional)
+- `mon config show` - Display current configuration
+- `mon config set-api-key <key>` - Set your Monday.com API key
+- `mon config set-board-id <id>` - Set your board ID
+- `mon config set-sprint-id <id>` - Set your sprint ID (optional)
 
 ### User Management
-- `./mon user info` - Show your user information
+- `mon user info` - Show your user information
 
 ## 🎯 Task Creation & Editing
 
 ### Create Tasks with Flags
 ```bash
 # Create a bug task with high priority
-./mon task create "Fix login issue" -t b -p h -s p
+mon task create "Fix login issue" -t b -p h -s p
 
 # Create a feature task
-./mon task create "Add dark mode" -t f -p m -s p
+mon task create "Add dark mode" -t f -p m -s p
 ```
 
 ### Edit Tasks with Flags
 ```bash
 # Update task status and priority
-./mon task edit 1 -s d -p c
+mon task edit 1 -s d -p c
 
 # Change task type and status
-./mon task edit 5 -t f -s p
+mon task edit 5 -t f -s p
 ```
 
 ### Available Flags
