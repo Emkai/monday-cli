@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-func (c *CLI) PrintItems(items map[int]monday.Item, sortedItems []monday.Item) {
-	var activeItems map[int]monday.Item = make(map[int]monday.Item)
+func (c *CLI) PrintItems(items map[string]monday.Item, sortedItems []monday.Item) {
+	var activeItems map[string]monday.Item = make(map[string]monday.Item)
 	sprintID := c.config.GetSprintID()
 	for id, item := range items {
 		skipTask := false
@@ -40,13 +40,28 @@ func (c *CLI) PrintItems(items map[int]monday.Item, sortedItems []monday.Item) {
 	fmt.Printf("👤 Found %d tasks assigned to %s:\n\n", len(items), c.config.GetUserEmail())
 
 	fmt.Println("Type [Status Priority] Task Name")
+	// Get index mapping for local indices
+	dataStore := monday.NewDataStore()
+	indexMap, hasIndexMap := dataStore.GetIndexMap(c.config.GetBoardID(), c.config.GetUserEmail())
+
 	// Use sortedItems to maintain order, but only print active items
 	for _, item := range sortedItems {
 		// Find the ID for this item in the map
 		for id, mapItem := range items {
 			if mapItem.ID == item.ID {
 				if _, isActive := activeItems[id]; isActive {
-					c.PrintTask(id, item)
+					// Use local index for display if available, otherwise use task ID
+					displayID := id
+					if hasIndexMap {
+						// Find the local index for this task ID
+						for idx, taskID := range indexMap {
+							if taskID == id {
+								displayID = fmt.Sprintf("%d", idx)
+								break
+							}
+						}
+					}
+					PrintTask(displayID, item)
 				}
 				break
 			}
@@ -58,7 +73,7 @@ func (c *CLI) PrintItems(items map[int]monday.Item, sortedItems []monday.Item) {
 
 }
 
-func (c *CLI) PrintTask(id int, item monday.Item) {
+func PrintTask(id string, item monday.Item) {
 	// Extract status, priority, and type
 	status := "📋"
 	priority := "⚪"
@@ -75,7 +90,7 @@ func (c *CLI) PrintTask(id int, item monday.Item) {
 	}
 
 	// Format: [icon] Task Name | Priority Type
-	fmt.Printf("%d. %s [%s %s] %s\n", id, taskType, status, priority, item.Name)
+	fmt.Printf("%s. %s [%s %s] %s\n", id, taskType, status, priority, item.Name)
 }
 
 // Icon helper functions
@@ -135,7 +150,7 @@ func getTypeIcon(taskType string) string {
 	}
 }
 
-func (c *CLI) PrintUserInfo(user *monday.User) {
+func PrintUserInfo(user *monday.User) {
 	fmt.Printf("👤 User Information\n")
 	fmt.Println("-" + strings.Repeat("-", 50))
 	fmt.Printf("🆔 ID: %s\n", user.ID)

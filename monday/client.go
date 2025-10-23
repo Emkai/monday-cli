@@ -310,12 +310,12 @@ func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStat
 	return nil
 }
 
-func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskType string) error {
+func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskType string) (*Item, error) {
 
 	// Get board to find column IDs
 	board, err := c.GetBoard(boardID)
 	if err != nil {
-		return fmt.Errorf("failed to get board: %w", err)
+		return nil, fmt.Errorf("failed to get board: %w", err)
 	}
 
 	// Find column IDs
@@ -369,14 +369,110 @@ func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskTyp
 
 	resp, err := c.ExecuteQuery(query, variables)
 	if err != nil {
-		return fmt.Errorf("failed to create task: %w", err)
+		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
 	if len(resp.Errors) > 0 {
-		return fmt.Errorf("failed to create task: %v", resp.Errors)
+		return nil, fmt.Errorf("failed to create task: %v", resp.Errors)
 	}
 
-	return nil
+	fmt.Printf("✅ Task %s created\n", resp.Data)
+
+	// Parse the response to get the task ID
+	var createResult struct {
+		CreateItem struct {
+			ID string `json:"id"`
+		} `json:"create_item"`
+	}
+
+	if err := json.Unmarshal(resp.Data, &createResult); err != nil {
+		fmt.Printf("Warning: Could not parse created task ID: %v\n", err)
+		return nil, fmt.Errorf("failed to parse created task ID: %v", err)
+	}
+
+	// Fetch the newly created task and add it to cache
+	if createResult.CreateItem.ID != "" {
+		task, err := c.fetchAndCacheNewTask(boardID, createResult.CreateItem.ID)
+		if err != nil {
+			fmt.Printf("Warning: Could not fetch and cache new task: %v\n", err)
+		}
+		return task, nil
+	}
+
+	return nil, fmt.Errorf("failed to create task: %v", resp.Errors)
+}
+
+// GetTaskByID retrieves a specific task by ID
+func (c *Client) GetTaskByID(taskID string) (*Item, error) {
+	query := `
+		query GetTask($itemId: ID!) {
+			items(ids: [$itemId]) {
+				id
+				name
+				column_values {
+					id
+					text
+					value
+				}
+				updated_at
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"itemId": taskID,
+	}
+
+	resp, err := c.ExecuteQuery(query, variables)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Items []Item `json:"items"`
+	}
+
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal task: %w", err)
+	}
+
+	if len(result.Items) == 0 {
+		return nil, fmt.Errorf("task not found")
+	}
+
+	return &result.Items[0], nil
+}
+
+// fetchAndCacheNewTask fetches a newly created task and adds it to the cache
+func (c *Client) fetchAndCacheNewTask(boardID, taskID string) (*Item, error) {
+	// Get the task details
+	task, err := c.GetTaskByID(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch task: %w", err)
+	}
+
+	// Get current user info to determine cache key
+	user, err := c.GetUserInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+
+	// Load existing cache
+	dataStore := NewDataStore()
+	existingTasks, _, exists := dataStore.GetCachedTasks(boardID, user.Email)
+
+	if !exists {
+		existingTasks = make(map[string]Item)
+	}
+
+	// Add the new task to existing cache using task ID as string key
+	existingTasks[taskID] = *task
+
+	// Store updated cache (this will automatically create new index mapping)
+	dataStore.StoreTaskRequest(boardID, user.Email, existingTasks)
+
+	fmt.Printf("📝 Task %s added to local cache\n", task.Name)
+	return task, nil
 }
 
 // GetUserInfo retrieves the current user's information
