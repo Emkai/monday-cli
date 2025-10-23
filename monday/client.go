@@ -310,6 +310,92 @@ func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStat
 	return nil
 }
 
+// UpdateTask updates multiple fields of a task
+func (c *Client) UpdateTask(boardID, ownerEmail string, task Item, status, priority, taskType string) (*Item, error) {
+	// First, get the board to find the column IDs
+	board, err := c.GetBoard(boardID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get board: %w", err)
+	}
+
+	// Find column IDs
+	var statusColumnID, priorityColumnID, typeColumnID string
+	for _, column := range board.Columns {
+		title := strings.ToLower(column.Title)
+		if strings.Contains(title, "status") {
+			statusColumnID = column.ID
+		} else if strings.Contains(title, "priority") {
+			priorityColumnID = column.ID
+		} else if strings.Contains(title, "type") {
+			typeColumnID = column.ID
+		}
+	}
+
+	// Build column updates
+	columnUpdates := make(map[string]string)
+
+	if status != "" && statusColumnID != "" {
+		columnUpdates[statusColumnID] = fmt.Sprintf(`{"label": "%s"}`, status)
+	}
+
+	if priority != "" && priorityColumnID != "" {
+		columnUpdates[priorityColumnID] = fmt.Sprintf(`{"label": "%s"}`, priority)
+	}
+
+	if taskType != "" && typeColumnID != "" {
+		columnUpdates[typeColumnID] = fmt.Sprintf(`{"label": "%s"}`, taskType)
+	}
+
+	// If no fields to update, return the original task
+	if len(columnUpdates) == 0 {
+		return &task, nil
+	}
+
+	// Create the mutation query
+	query := `
+		mutation UpdateTask($boardId: ID!, $itemId: ID!, $columnValues: JSON!) {
+			change_multiple_column_values(board_id: $boardId, item_id: $itemId, column_values: $columnValues) {
+				id
+			}
+		}
+	`
+
+	// Create column values JSON
+	columnValues := "{"
+	first := true
+	for columnID, value := range columnUpdates {
+		if !first {
+			columnValues += ","
+		}
+		columnValues += fmt.Sprintf(`"%s": %s`, columnID, value)
+		first = false
+	}
+	columnValues += "}"
+
+	variables := map[string]interface{}{
+		"boardId":      boardID,
+		"itemId":       task.ID,
+		"columnValues": columnValues,
+	}
+
+	resp, err := c.ExecuteQuery(query, variables)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update task: %w", err)
+	}
+
+	if len(resp.Errors) > 0 {
+		return nil, fmt.Errorf("failed to update task: %v", resp.Errors)
+	}
+
+	// Fetch the updated task to return the latest data
+	updatedTask, err := c.GetTaskByID(task.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated task: %w", err)
+	}
+
+	return updatedTask, nil
+}
+
 func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskType string) (*Item, error) {
 
 	// Get board to find column IDs

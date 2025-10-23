@@ -288,8 +288,11 @@ func (c *CLI) HandleTaskCommand() {
 		return
 	case "edit", "e":
 		if len(c.command.Args) < 2 {
-			fmt.Println("Usage: monday-cli task edit <task-index> <new-status>")
-			fmt.Println("New status: done(d), in progress(p), stuck(s), waiting review(r), ready for testing(t), removed(rm)")
+			fmt.Println("Usage: monday-cli task edit <task-index> [flags]")
+			fmt.Println("Flags:")
+			fmt.Println("  -status, -s <status>     Set task status (done/d, in progress/p, stuck/s, etc.)")
+			fmt.Println("  -priority, -p <priority> Set task priority (critical/c, high/h, medium/m, low/l)")
+			fmt.Println("  -type, -t <type>         Set task type (bug/b, feature/f, test/t, security/s, improvement/i)")
 			return
 		}
 		taskIndex, err := strconv.Atoi(c.command.Args[1])
@@ -297,25 +300,67 @@ func (c *CLI) HandleTaskCommand() {
 			fmt.Printf("❌ Invalid task index: %v\n", err)
 			os.Exit(1)
 		}
-		newStatus := getStatusValue(c.command.Args[2])
-		if newStatus == "" {
-			fmt.Printf("❌ Invalid status: %s\n", c.command.Args[2])
-			os.Exit(1)
+
+		// Parse flags
+		var status, priority, taskType string
+		for _, flag := range c.command.Flags {
+			switch flag.Flag {
+			case "-status", "-s":
+				status = getStatusValue(flag.Value)
+				if status == "" {
+					fmt.Printf("❌ Invalid status: %s\n", flag.Value)
+					fmt.Println("Valid status values: done(d), in progress(p), stuck(s), waiting review(r), ready for testing(t), removed(rm)")
+					os.Exit(1)
+				}
+			case "-priority", "-p":
+				priority = getPriorityValue(flag.Value)
+				if priority == "" {
+					fmt.Printf("❌ Invalid priority: %s\n", flag.Value)
+					fmt.Println("Valid priority values: critical(c), high(h), medium(m), low(l)")
+					os.Exit(1)
+				}
+			case "-type", "-t":
+				taskType = getTypeValue(flag.Value)
+				if taskType == "" {
+					fmt.Printf("❌ Invalid type: %s\n", flag.Value)
+					fmt.Println("Valid type values: bug(b), feature(f), test(t), security(s), quality(q)")
+					os.Exit(1)
+				}
+			}
 		}
+
+		// Check if at least one field is being updated
+		if status == "" && priority == "" && taskType == "" {
+			fmt.Println("❌ No fields to update. Please specify at least one flag (-status, -priority, or -type)")
+			return
+		}
+
 		dataStore := monday.NewDataStore()
 		task, _, ok := dataStore.GetCachedTaskByIndex(c.config.GetBoardID(), c.config.GetUserEmail(), taskIndex)
 		if !ok {
 			fmt.Printf("❌ Task %d not found\n", taskIndex)
 			os.Exit(1)
 		}
+
+		fmt.Printf("Updating task %d: %s\n", taskIndex, task.Name)
+		if status != "" {
+			fmt.Printf("  Status: %s\n", status)
+		}
+		if priority != "" {
+			fmt.Printf("  Priority: %s\n", priority)
+		}
+		if taskType != "" {
+			fmt.Printf("  Type: %s\n", taskType)
+		}
+
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
-		err = client.UpdateTaskStatus(c.config.GetBoardID(), c.config.GetUserEmail(), task, newStatus)
+		updatedTask, err := client.UpdateTask(c.config.GetBoardID(), c.config.GetUserEmail(), task, status, priority, taskType)
 		if err != nil {
-			fmt.Printf("❌ Error updating task status: %v\n", err)
+			fmt.Printf("❌ Error updating task: %v\n", err)
 			os.Exit(1)
 		}
-		dataStore.UpdateCachedTaskByIndex(c.config.GetBoardID(), c.config.GetUserEmail(), taskIndex, task)
-		fmt.Printf("✅ Task %d status updated to %s\n", taskIndex, newStatus)
+		dataStore.UpdateCachedTaskByIndex(c.config.GetBoardID(), c.config.GetUserEmail(), taskIndex, *updatedTask)
+		fmt.Printf("✅ Task %d updated successfully\n", taskIndex)
 		return
 	default:
 		c.HelpTaskCommand()
@@ -382,7 +427,11 @@ func (c *CLI) HelpTaskCommand() {
 	fmt.Println("      -status, -s <status>     Set task status (done/d, in progress/p, stuck/s, etc.)")
 	fmt.Println("      -priority, -p <priority> Set task priority (critical/c, high/h, medium/m, low/l)")
 	fmt.Println("      -type, -t <type>         Set task type (bug/b, feature/f, test/t, security/s, improvement/i)")
-	fmt.Println("  task edit (e) <task-index> <new-status> Edit a specific task")
+	fmt.Println("  task edit (e) <task-index> [flags] Edit a specific task")
+	fmt.Println("    Flags:")
+	fmt.Println("      -status, -s <status>     Set task status (done/d, in progress/p, stuck/s, etc.)")
+	fmt.Println("      -priority, -p <priority> Set task priority (critical/c, high/h, medium/m, low/l)")
+	fmt.Println("      -type, -t <type>         Set task type (bug/b, feature/f, test/t, security/s, improvement/i)")
 }
 
 func (c *CLI) HandleUserCommand() {
