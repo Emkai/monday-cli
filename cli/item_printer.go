@@ -33,11 +33,11 @@ func (c *CLI) PrintItems(items map[int]monday.Item, sortedItems []monday.Item) {
 	}
 
 	if len(activeItems) == 0 {
-		fmt.Printf("🎉 No active tasks assigned to %s in %s\n", c.config.GetOwnerEmail(), c.config.GetBoardID())
+		fmt.Printf("🎉 No active tasks assigned to %s in %s\n", c.config.GetUserEmail(), c.config.GetBoardID())
 		return
 	}
 
-	fmt.Printf("👤 Found %d tasks assigned to %s:\n\n", len(items), c.config.GetOwnerEmail())
+	fmt.Printf("👤 Found %d tasks assigned to %s:\n\n", len(items), c.config.GetUserEmail())
 
 	fmt.Println("Type [Status Priority] Task Name")
 	// Use sortedItems to maintain order, but only print active items
@@ -132,5 +132,37 @@ func getTypeIcon(taskType string) string {
 		return "📝"
 	default:
 		return "📝"
+	}
+}
+
+func (c *CLI) PrintUserInfo(user *monday.User) {
+	fmt.Printf("👤 User Information\n")
+	fmt.Println("-" + strings.Repeat("-", 50))
+	fmt.Printf("🆔 ID: %s\n", user.ID)
+	fmt.Printf("👤 Name: %s\n", user.Name)
+	fmt.Printf("📧 Email: %s\n", user.Email)
+	if user.Title != "" {
+		fmt.Printf("💼 Title: %s\n", user.Title)
+	}
+	if user.PhotoURL != "" {
+		fmt.Printf("🖼️  Photo: %s\n", user.PhotoURL)
+	}
+	status := "❌ Disabled"
+	if user.Enabled {
+		status = "✅ Enabled"
+	}
+	fmt.Printf("🔐 Status: %s\n", status)
+	fmt.Println("=" + strings.Repeat("=", 50))
+}
+
+func PrintCommand(cmd Command) {
+	fmt.Println("Command: " + cmd.Command)
+	fmt.Println("Args:")
+	for _, arg := range cmd.Args {
+		fmt.Println("    Arg: " + arg)
+	}
+	fmt.Println("Flags:")
+	for _, flag := range cmd.Flags {
+		fmt.Println("    Flag: " + flag.Flag + " Value: " + flag.Value)
 	}
 }

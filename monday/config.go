@@ -15,6 +15,10 @@ type Config struct {
 	OwnerEmail string `json:"owner_email"`
 	BoardID    string `json:"board_id"`
 	SprintID   string `json:"sprint_id"`
+	UserID     string `json:"user_id"`
+	UserName   string `json:"user_name"`
+	UserEmail  string `json:"user_email"`
+	UserTitle  string `json:"user_title"`
 }
 
 // DefaultConfig returns the default configuration
@@ -117,7 +121,7 @@ func (c *Config) GetBoardID() string {
 
 // IsConfigured checks if the configuration is complete
 func (c *Config) IsConfigured() bool {
-	return c.APIKey != "" && c.OwnerEmail != "" && c.BoardID != ""
+	return c.APIKey != "" && c.HasUserInfo() && c.BoardID != ""
 }
 
 // SetSprintID sets the sprint ID in the configuration
@@ -137,4 +141,34 @@ func GetDefaultConfigPath() string {
 		return "./monday-config.json"
 	}
 	return filepath.Join(homeDir, ".config", "monday-cli", "config.json")
+}
+
+// SetUserInfo sets the user information in the configuration
+func (c *Config) SetUserInfo(user *User) {
+	c.UserID = user.ID
+	c.UserName = user.Name
+	c.UserEmail = user.Email
+	c.UserTitle = user.Title
+	// Also set the owner email to the user's email for backward compatibility
+	c.OwnerEmail = user.Email
+}
+
+// GetUserInfo returns the user information from the configuration
+func (c *Config) GetUserInfo() *User {
+	return &User{
+		ID:    c.UserID,
+		Name:  c.UserName,
+		Email: c.UserEmail,
+		Title: c.UserTitle,
+	}
+}
+
+// HasUserInfo checks if user information is available
+func (c *Config) HasUserInfo() bool {
+	return c.UserID != "" && c.UserEmail != ""
+}
+
+// GetUserEmail returns the user email
+func (c *Config) GetUserEmail() string {
+	return c.UserEmail
 }

@@ -39,3 +39,13 @@ type ColumnValue struct {
 	Text  string          `json:"text"`
 	Value json.RawMessage `json:"value"`
 }
+
+// User represents a Monday.com user
+type User struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Title    string `json:"title"`
+	PhotoURL string `json:"photo_small"`
+	Enabled  bool   `json:"enabled"`
+}

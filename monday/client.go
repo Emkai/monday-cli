@@ -379,6 +379,37 @@ func (c *Client) CreateTask(boardID, ownerEmail, taskName string) error {
 	return nil
 }
 
+// GetUserInfo retrieves the current user's information
+func (c *Client) GetUserInfo() (*User, error) {
+	query := `
+		query GetUserInfo {
+			me {
+				id
+				name
+				email
+				title
+				photo_small
+				enabled
+			}
+		}
+	`
+
+	resp, err := c.ExecuteQuery(query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Me User `json:"me"`
+	}
+
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user info: %w", err)
+	}
+
+	return &result.Me, nil
+}
+
 // Helper functions for sorting
 func getSortableStatus(item Item) int {
 	for _, cv := range item.ColumnValues {

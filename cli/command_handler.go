@@ -19,6 +19,8 @@ func (c *CLI) HandleCommand() {
 		c.HandleTasksCommand()
 	case "task", "t":
 		c.HandleTaskCommand()
+	case "user", "u":
+		c.HandleUserCommand()
 	default:
 		c.ShowHelp()
 	}
@@ -32,6 +34,7 @@ func (c *CLI) ShowHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  tasks (ts)     Show your assigned tasks")
 	fmt.Println("  task (t)       Specific task operations")
+	fmt.Println("  user (u)       User information")
 	fmt.Println("  config (cfg)   Manage configuration")
 	fmt.Println("  help (h)       Show this help")
 	fmt.Println("")
@@ -51,14 +54,26 @@ func (c *CLI) HandleConfigCommand() {
 		}
 		c.config.SetAPIKey(c.command.Args[1])
 		c.config.Save(monday.GetConfigPath())
-		return
-	case "set-owner-email", "email":
-		if len(c.command.Args) < 2 {
-			fmt.Println("Usage: monday-cli config set-owner-email <email>")
+		fmt.Println("API Key set successfully")
+
+		// Automatically fetch user info after setting API key
+		fmt.Println("🔍 Fetching user information...")
+		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
+		user, err := client.GetUserInfo()
+		if err != nil {
+			fmt.Printf("❌ Error getting user info: %v\n", err)
+			fmt.Println("You can run 'user info' later to fetch user information")
 			return
 		}
-		c.config.SetOwnerEmail(c.command.Args[1])
+
+		// Save user info to config
+		c.config.SetUserInfo(user)
 		c.config.Save(monday.GetConfigPath())
+		fmt.Println("💾 User information saved to configuration")
+		fmt.Println("")
+
+		// Show user info
+		c.PrintUserInfo(user)
 		return
 	case "set-board-id", "board":
 		if len(c.command.Args) < 2 {
@@ -78,7 +93,17 @@ func (c *CLI) HandleConfigCommand() {
 		return
 	case "show", "s":
 		fmt.Println("API Key:", maskAPIKey(c.config.GetAPIKey()))
-		fmt.Println("Owner Email:", c.config.GetOwnerEmail())
+		if c.config.HasUserInfo() {
+			user := c.config.GetUserInfo()
+			fmt.Println("User ID:", user.ID)
+			fmt.Println("User Name:", user.Name)
+			fmt.Println("User Email:", user.Email)
+			if user.Title != "" {
+				fmt.Println("User Title:", user.Title)
+			}
+		} else {
+			fmt.Println("User Info: Not configured (run 'user info' to fetch)")
+		}
 		fmt.Println("Board ID:", c.config.GetBoardID())
 		fmt.Println("Sprint ID:", c.config.GetSprintID())
 		return
@@ -98,7 +123,6 @@ func maskAPIKey(apiKey string) string {
 func (c *CLI) HelpConfigCommand() {
 	fmt.Println("Config Commands:")
 	fmt.Println("  config set-api-key (key) <api-key>")
-	fmt.Println("  config set-owner-email (email) <email>")
 	fmt.Println("  config set-board-id (board) <board-id>")
 	fmt.Println("  config set-sprint-id (sprint) <sprint-id>")
 	fmt.Println("  config show (s)")
@@ -113,7 +137,7 @@ func (c *CLI) HandleTasksCommand() {
 	switch subcommand {
 	case "list", "ls":
 		dataStore := monday.NewDataStore()
-		tasks, timestamp, _ := dataStore.GetCachedTasks(c.config.GetBoardID(), c.config.GetOwnerEmail())
+		tasks, timestamp, _ := dataStore.GetCachedTasks(c.config.GetBoardID(), c.config.GetUserEmail())
 		fmt.Println("Tasks cached at: " + timestamp.Format(time.RFC3339))
 		var sortedTasks []monday.Item
 		for _, task := range tasks {
@@ -126,7 +150,7 @@ func (c *CLI) HandleTasksCommand() {
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
 
 		boardID := c.config.GetBoardID()
-		ownerEmail := c.config.GetOwnerEmail()
+		ownerEmail := c.config.GetUserEmail()
 
 		fmt.Printf("🔍 Fetching tasks assigned to %s...\n", ownerEmail)
 		fmt.Println("=" + strings.Repeat("=", 50))
@@ -195,7 +219,7 @@ func (c *CLI) HandleTaskCommand() {
 			os.Exit(1)
 		}
 		dataStore := monday.NewDataStore()
-		task, timestamp, ok := dataStore.GetCachedTask(c.config.GetBoardID(), c.config.GetOwnerEmail(), taskID)
+		task, timestamp, ok := dataStore.GetCachedTask(c.config.GetBoardID(), c.config.GetUserEmail(), taskID)
 		if !ok {
 			fmt.Printf("❌ Task %d not found\n", taskID)
 			os.Exit(1)
@@ -209,16 +233,14 @@ func (c *CLI) HandleTaskCommand() {
 			return
 		}
 
-		taskName := strings.Join(c.command.Args[1:], " ")
-
-		fmt.Printf("Creating task: %s\n", taskName)
+		fmt.Printf("Creating task: %s\n", c.command.Args[1])
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
-		err = client.CreateTask(c.config.GetBoardID(), c.config.GetOwnerEmail(), taskName)
+		err = client.CreateTask(c.config.GetBoardID(), c.config.GetUserEmail(), c.command.Args[1])
 		if err != nil {
 			fmt.Printf("❌ Error creating task: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("✅ Task %s created\n", taskName)
+		fmt.Printf("✅ Task %s created\n", c.command.Args[1])
 		return
 	case "edit", "e":
 		if len(c.command.Args) < 2 {
@@ -237,19 +259,19 @@ func (c *CLI) HandleTaskCommand() {
 			os.Exit(1)
 		}
 		dataStore := monday.NewDataStore()
-		task, _, ok := dataStore.GetCachedTask(c.config.GetBoardID(), c.config.GetOwnerEmail(), taskID)
+		task, _, ok := dataStore.GetCachedTask(c.config.GetBoardID(), c.config.GetUserEmail(), taskID)
 		if !ok {
 			fmt.Printf("❌ Task %d not found\n", taskID)
 			os.Exit(1)
 		}
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
-		err = client.UpdateTaskStatus(c.config.GetBoardID(), c.config.GetOwnerEmail(), task, newStatus)
+		err = client.UpdateTaskStatus(c.config.GetBoardID(), c.config.GetUserEmail(), task, newStatus)
 		if err != nil {
 			fmt.Printf("❌ Error updating task status: %v\n", err)
 			os.Exit(1)
 		}
-		dataStore.UpdateCachedTask(c.config.GetBoardID(), c.config.GetOwnerEmail(), taskID, task)
-		fmt.Printf("✅ Task %s status updated to %s\n", taskID, newStatus)
+		dataStore.UpdateCachedTask(c.config.GetBoardID(), c.config.GetUserEmail(), taskID, task)
+		fmt.Printf("✅ Task %d status updated to %s\n", taskID, newStatus)
 		return
 	default:
 		c.HelpTaskCommand()
@@ -280,4 +302,42 @@ func (c *CLI) HelpTaskCommand() {
 	fmt.Println("Task Commands:")
 	fmt.Println("  task show (s) <task-id> Show a specific task")
 	fmt.Println("  task edit (e) <task-id> <new-status> Edit a specific task")
+}
+
+func (c *CLI) HandleUserCommand() {
+	if len(c.command.Args) == 0 {
+		c.HelpUserCommand()
+		return
+	}
+	subcommand := c.command.Args[0]
+	switch subcommand {
+	case "info", "i":
+		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
+
+		fmt.Println("🔍 Fetching user information...")
+		fmt.Println("=" + strings.Repeat("=", 50))
+
+		user, err := client.GetUserInfo()
+		if err != nil {
+			fmt.Printf("❌ Error getting user info: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Save user info to config
+		c.config.SetUserInfo(user)
+		c.config.Save(monday.GetConfigPath())
+		fmt.Println("💾 User information saved to configuration")
+		fmt.Println("")
+
+		c.PrintUserInfo(user)
+		return
+	default:
+		c.HelpUserCommand()
+		return
+	}
+}
+
+func (c *CLI) HelpUserCommand() {
+	fmt.Println("User Commands:")
+	fmt.Println("  user info (i)   Show current user information")
 }
