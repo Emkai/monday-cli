@@ -115,11 +115,11 @@ func (c *CLI) HandleTasksCommand() {
 		dataStore := monday.NewDataStore()
 		tasks, timestamp, _ := dataStore.GetCachedTasks(c.config.GetBoardID(), c.config.GetOwnerEmail())
 		fmt.Println("Tasks cached at: " + timestamp.Format(time.RFC3339))
-		// Convert map to slice for consistent ordering
 		var sortedTasks []monday.Item
 		for _, task := range tasks {
 			sortedTasks = append(sortedTasks, task)
 		}
+		sortedTasks = monday.OrderItems(sortedTasks)
 		c.PrintItems(tasks, sortedTasks)
 		return
 	case "fetch", "f":

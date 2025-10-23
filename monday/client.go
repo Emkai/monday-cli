@@ -224,11 +224,15 @@ func (c *Client) GetBoardItemsByOwner(boardID, ownerEmail string) ([]Item, error
 		fmt.Printf("Fetching next page... currently %d items for %s\n", len(allItems), ownerEmail)
 	}
 
+	allItems = OrderItems(allItems)
+	return allItems, nil
+}
+
+func OrderItems(items []Item) []Item {
 	// Sort items by status, priority, then type
-	sort.Slice(allItems, func(i, j int) bool {
-		// Get status, priority, and type for both items
-		statusI := getSortableStatus(allItems[i])
-		statusJ := getSortableStatus(allItems[j])
+	sort.Slice(items, func(i, j int) bool {
+		statusI := getSortableStatus(items[i])
+		statusJ := getSortableStatus(items[j])
 
 		// First sort by status
 		if statusI != statusJ {
@@ -236,19 +240,19 @@ func (c *Client) GetBoardItemsByOwner(boardID, ownerEmail string) ([]Item, error
 		}
 
 		// Then by priority
-		priorityI := getSortablePriority(allItems[i])
-		priorityJ := getSortablePriority(allItems[j])
+		priorityI := getSortablePriority(items[i])
+		priorityJ := getSortablePriority(items[j])
 		if priorityI != priorityJ {
 			return priorityI < priorityJ
 		}
 
 		// Finally by type
-		typeI := getSortableType(allItems[i])
-		typeJ := getSortableType(allItems[j])
+		typeI := getSortableType(items[i])
+		typeJ := getSortableType(items[j])
 		return typeI < typeJ
-	})
 
-	return allItems, nil
+	})
+	return items
 }
 
 func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStatus string) error {
