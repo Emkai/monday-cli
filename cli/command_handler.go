@@ -131,6 +131,15 @@ func (c *CLI) HandleConfigCommand() {
 	case "remove-me", "removeme":
 		c.HandleRemoveMeCommand()
 		return
+	case "filter-to-sprint", "sprint-filter":
+		c.HandleFilterToSprintCommand()
+		return
+	case "add-sprint", "add-s":
+		c.HandleAddSprintCommand()
+		return
+	case "remove-sprint", "rm-s":
+		c.HandleRemoveSprintCommand()
+		return
 	default:
 		c.HelpConfigCommand()
 		return
@@ -162,6 +171,9 @@ func (c *CLI) HelpConfigCommand() {
 	fmt.Println("  config filter-to-me (me)           Show only tasks assigned to you")
 	fmt.Println("  config add-me (addme)              Add yourself to user whitelist")
 	fmt.Println("  config remove-me (removeme)        Remove yourself from user whitelist")
+	fmt.Println("  config filter-to-sprint (sprint-filter)  Filter to show only current sprint tasks")
+	fmt.Println("  config add-sprint (add-s)          Add current sprint to whitelist")
+	fmt.Println("  config remove-sprint (rm-s)        Remove current sprint from whitelist")
 	fmt.Println("")
 	fmt.Println("Filter Types: status, priority, type, sprint, user_name, user_email")
 	fmt.Println("Examples:")
@@ -223,15 +235,29 @@ func (c *CLI) HandleTasksCommand() {
 			fmt.Printf("👥 Found %d users on board\n", len(users))
 		}
 
+		// Fetch board sprints
+		fmt.Printf("🏃 Fetching board sprints...\n")
+		sprints, err := client.GetBoardSprints(boardID)
+		if err != nil {
+			fmt.Printf("⚠️  Warning: Could not fetch board sprints: %v\n", err)
+			sprints = []monday.Sprint{} // Continue without sprints
+		} else {
+			fmt.Printf("🏃 Found %d sprints on board\n", len(sprints))
+		}
+
 		dataStore := monday.NewDataStore()
 		dataStore.ClearCache(boardID)
 		dataStore.StoreTasksRequest(boardID, items, rawItems)
 		dataStore.StoreBoardUsers(boardID, users)
+		dataStore.StoreBoardSprints(boardID, sprints)
 		cacheItems, _, _ := dataStore.GetCachedTasks(boardID)
 		c.PrintItems(cacheItems)
 		return
 	case "users", "u":
 		c.HandleListBoardUsersCommand()
+		return
+	case "sprints", "s":
+		c.HandleListBoardSprintsCommand()
 		return
 	default:
 		c.HelpTasksCommand()
@@ -244,6 +270,7 @@ func (c *CLI) HelpTasksCommand() {
 	fmt.Println("  tasks list (ls)      Show your assigned tasks")
 	fmt.Println("  tasks fetch (f)      Fetch your assigned tasks")
 	fmt.Println("  tasks users (u)      Show board users")
+	fmt.Println("  tasks sprints (s)    Show board sprints")
 }
 
 func (c *CLI) HandleTaskCommand() {
@@ -761,4 +788,61 @@ func (c *CLI) HandleListBoardUsersCommand() {
 	}
 
 	fmt.Printf("📊 Total users: %d\n", len(users))
+}
+
+// HandleListBoardSprintsCommand lists all sprints found on the board
+func (c *CLI) HandleListBoardSprintsCommand() {
+	dataStore := monday.NewDataStore()
+	sprints, timestamp, ok := dataStore.GetCachedBoardSprints(c.config.GetBoardID())
+
+	if !ok || len(sprints) == 0 {
+		fmt.Println("❌ No board sprints found in cache")
+		fmt.Println("💡 Run 'tasks fetch' first to fetch board sprints")
+		return
+	}
+
+	fmt.Printf("🏃 Board Sprints (cached at: %s)\n", timestamp.Format(time.RFC3339))
+	fmt.Println("=" + strings.Repeat("=", 50))
+
+	for i, sprint := range sprints {
+		fmt.Printf("%d. %s\n", i+1, sprint)
+	}
+
+	fmt.Printf("📊 Total sprints: %d\n", len(sprints))
+}
+
+// HandleFilterToSprintCommand filters to show only tasks from the current sprint
+func (c *CLI) HandleFilterToSprintCommand() {
+	err := c.config.FilterToCurrentSprint()
+	if err != nil {
+		fmt.Printf("❌ Error filtering to current sprint: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Println("✅ Filtered to show only tasks from current sprint")
+}
+
+// HandleAddSprintCommand adds the current sprint to the whitelist
+func (c *CLI) HandleAddSprintCommand() {
+	err := c.config.AddCurrentSprintToWhitelist()
+	if err != nil {
+		fmt.Printf("❌ Error adding current sprint to whitelist: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Println("✅ Added current sprint to whitelist")
+}
+
+// HandleRemoveSprintCommand removes the current sprint from the whitelist
+func (c *CLI) HandleRemoveSprintCommand() {
+	err := c.config.RemoveCurrentSprintFromWhitelist()
+	if err != nil {
+		fmt.Printf("❌ Error removing current sprint from whitelist: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Println("✅ Removed current sprint from whitelist")
 }

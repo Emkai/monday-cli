@@ -224,6 +224,17 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, []Item, error) {
 			UpdatedAt: item.UpdatedAt,
 		}
 		localId++
+
+		// Debug: Show all column IDs for the first few tasks
+		if localId <= 3 {
+			fmt.Printf("🔍 Task %d columns:\n", localId)
+			for j, cv := range item.ColumnValues {
+				if j < 10 { // Only show first 10 columns
+					fmt.Printf("  Column %d: ID=%s, Text='%s'\n", j+1, cv.ID, cv.Text)
+				}
+			}
+		}
+
 		for _, cv := range item.ColumnValues {
 			if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
 				task.Status = Status(cv.Text)
@@ -234,14 +245,70 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, []Item, error) {
 			if strings.Contains(strings.ToLower(cv.ID), "type") && cv.Text != "" {
 				task.Type = Type(cv.Text)
 			}
-			if strings.Contains(strings.ToLower(cv.ID), "sprint") && cv.Text != "" {
+			// Look for sprint columns with more flexible matching
+			columnID := strings.ToLower(cv.ID)
+			columnText := strings.ToLower(cv.Text)
+
+			if (strings.Contains(columnID, "sprint") ||
+				strings.Contains(columnID, "iteration") ||
+				strings.Contains(columnID, "cycle") ||
+				strings.Contains(columnID, "release") ||
+				strings.Contains(columnID, "milestone") ||
+				strings.Contains(columnID, "phase") ||
+				strings.Contains(columnText, "sprint") ||
+				strings.Contains(columnText, "iteration") ||
+				strings.Contains(columnText, "cycle") ||
+				strings.Contains(columnText, "release") ||
+				strings.Contains(columnText, "milestone") ||
+				strings.Contains(columnText, "phase") ||
+				strings.Contains(columnText, "26")) &&
+				cv.Text != "" {
 				task.Sprint = Sprint(cv.Text)
+				fmt.Printf("🔍 Task '%s' assigned to sprint: %s (column: %s)\n", task.Name, cv.Text, cv.ID)
 			}
-			if strings.Contains(strings.ToLower(cv.ID), "user_name") && cv.Text != "" {
-				task.UserName = cv.Text
-			}
-			if strings.Contains(strings.ToLower(cv.ID), "user_email") && cv.Text != "" {
-				task.UserEmail = cv.Text
+			// Handle user assignments from task_owner column
+			if strings.Contains(strings.ToLower(cv.ID), "person") ||
+				strings.Contains(strings.ToLower(cv.ID), "user") ||
+				strings.Contains(strings.ToLower(cv.ID), "owner") ||
+				strings.Contains(strings.ToLower(cv.ID), "assign") {
+
+				// Parse the user assignment data
+				var personData struct {
+					PersonsAndTeams []struct {
+						ID   int    `json:"id"`
+						Kind string `json:"kind"`
+					} `json:"personsAndTeams"`
+				}
+
+				// First unmarshal the JSON string, then unmarshal the actual data
+				var jsonStr string
+				if err := json.Unmarshal(cv.Value, &jsonStr); err == nil {
+					if err := json.Unmarshal([]byte(jsonStr), &personData); err == nil {
+						// Extract unique user names from the text representation
+						userNames := strings.Split(cv.Text, ",")
+						seenUsers := make(map[string]bool)
+						var taskUserNames []string
+						var taskUserEmails []string
+
+						// Process each name in the text (this handles the actual user assignments)
+						for _, name := range userNames {
+							trimmedName := strings.TrimSpace(name)
+							if trimmedName != "" && !seenUsers[trimmedName] {
+								seenUsers[trimmedName] = true
+								taskUserNames = append(taskUserNames, trimmedName)
+								taskUserEmails = append(taskUserEmails, trimmedName)
+							}
+						}
+
+						// Join multiple users with comma
+						if len(taskUserNames) > 0 {
+							task.UserName = strings.Join(taskUserNames, ", ")
+						}
+						if len(taskUserEmails) > 0 {
+							task.UserEmail = strings.Join(taskUserEmails, ", ")
+						}
+					}
+				}
 			}
 		}
 		allTasks = append(allTasks, task)
@@ -359,6 +426,94 @@ func (c *Client) GetBoardUsers(boardID string) ([]User, error) {
 	}
 
 	return users, nil
+}
+
+// GetBoardSprints retrieves all sprints from a specific board
+func (c *Client) GetBoardSprints(boardID string) ([]Sprint, error) {
+	query := `
+		query GetBoardSprints($boardId: ID!) {
+			boards(ids: [$boardId]) {
+				items_page {
+					items {
+						column_values {
+							id
+							text
+							value
+						}
+					}
+				}
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"boardId": boardID,
+	}
+
+	resp, err := c.ExecuteQuery(query, variables)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Boards []struct {
+			ItemsPage struct {
+				Items []struct {
+					ColumnValues []ColumnValue `json:"column_values"`
+				} `json:"items"`
+			} `json:"items_page"`
+		} `json:"boards"`
+	}
+
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal board sprints: %w", err)
+	}
+
+	if len(result.Boards) == 0 {
+		return nil, fmt.Errorf("board not found")
+	}
+
+	// Extract unique sprints from all items
+	sprintSet := make(map[string]bool)
+	var sprints []Sprint
+
+	// Debug: Print all column IDs to see what we have
+	fmt.Printf("🔍 Debug: Found %d items, checking for sprint columns...\n", len(result.Boards[0].ItemsPage.Items))
+
+	for i, item := range result.Boards[0].ItemsPage.Items {
+		if i < 3 { // Only debug first 3 items
+			fmt.Printf("Item %d: %s\n", i+1, "Task") // We don't have name in this struct
+			for j, cv := range item.ColumnValues {
+				if j < 10 { // Only show first 10 columns
+					fmt.Printf("  Column %d: ID=%s, Text='%s'\n", j+1, cv.ID, cv.Text)
+				}
+			}
+		}
+
+		for _, cv := range item.ColumnValues {
+			// Look for sprint columns with more flexible matching
+			columnID := strings.ToLower(cv.ID)
+			columnText := strings.ToLower(cv.Text)
+
+			// Check for sprint-related patterns
+			if (strings.Contains(columnID, "sprint") ||
+				strings.Contains(columnID, "iteration") ||
+				strings.Contains(columnID, "cycle") ||
+				strings.Contains(columnText, "sprint") ||
+				strings.Contains(columnText, "iteration")) &&
+				cv.Text != "" {
+
+				sprintName := strings.TrimSpace(cv.Text)
+				if sprintName != "" && !sprintSet[sprintName] {
+					sprintSet[sprintName] = true
+					sprints = append(sprints, Sprint(sprintName))
+					fmt.Printf("🔍 Found sprint: %s (from column %s)\n", sprintName, cv.ID)
+				}
+			}
+		}
+	}
+
+	return sprints, nil
 }
 
 func OrderTasks(tasks []Task) []Task {

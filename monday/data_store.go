@@ -14,6 +14,7 @@ type TaskCache struct {
 	LocalIdMap map[int]string // Maps local index to task ID
 	RawItems   map[string]Item
 	Users      map[string]User // Maps user ID to User
+	Sprints    []Sprint        // List of sprints found on the board
 	Timestamp  time.Time
 }
 
@@ -87,6 +88,46 @@ func (ds *DataStore) GetCachedBoardUsers(boardID string) ([]User, time.Time, boo
 	return []User{}, time.Time{}, false
 }
 
+// StoreBoardSprints stores a slice of Sprint objects in the cache
+func (ds *DataStore) StoreBoardSprints(boardID string, sprints []Sprint) {
+	if err := ds.Load(); err != nil {
+		fmt.Printf("Failed to load cache: %v\n", err)
+		return
+	}
+
+	if _, exists := ds.cache[boardID]; !exists {
+		ds.cache[boardID] = TaskCache{
+			Tasks:      make(map[string]Task),
+			LocalIdMap: make(map[int]string),
+			RawItems:   make(map[string]Item),
+			Users:      make(map[string]User),
+			Sprints:    []Sprint{},
+			Timestamp:  time.Now(),
+		}
+	}
+
+	cache := ds.cache[boardID]
+	cache.Sprints = sprints
+	cache.Timestamp = time.Now()
+	ds.cache[boardID] = cache
+
+	if err := ds.Save(); err != nil {
+		fmt.Printf("Failed to save cache: %v\n", err)
+	}
+}
+
+// GetCachedBoardSprints retrieves cached Sprint objects
+func (ds *DataStore) GetCachedBoardSprints(boardID string) ([]Sprint, time.Time, bool) {
+	if err := ds.Load(); err != nil {
+		return []Sprint{}, time.Time{}, false
+	}
+
+	if cached, exists := ds.cache[boardID]; exists {
+		return cached.Sprints, cached.Timestamp, true
+	}
+	return []Sprint{}, time.Time{}, false
+}
+
 // StoreTasksRequest caches a task request result
 func (ds *DataStore) StoreTasksRequest(boardID string, tasks []Task, rawItems []Item) {
 	localIdMap := make(map[int]string)
@@ -108,6 +149,7 @@ func (ds *DataStore) StoreTasksRequest(boardID string, tasks []Task, rawItems []
 		LocalIdMap: localIdMap,
 		RawItems:   rawItemsMap,
 		Users:      make(map[string]User),
+		Sprints:    []Sprint{},
 		Timestamp:  time.Now(),
 	}
 

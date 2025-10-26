@@ -613,6 +613,77 @@ func (c *Config) RemoveCurrentUserFromBlacklist() error {
 	return nil
 }
 
+// Convenience methods for current sprint filtering
+// FilterToCurrentSprint sets filters to show only tasks from the current sprint
+func (c *Config) FilterToCurrentSprint() error {
+	if c.SprintID == "" {
+		return fmt.Errorf("current sprint not set - run 'config set-sprint-id <sprint-id>' first")
+	}
+
+	// Clear existing sprint filters
+	c.Filters.SprintWhitelist = []string{}
+	c.Filters.SprintBlacklist = []string{}
+
+	// Add current sprint to whitelist
+	c.Filters.SprintWhitelist = append(c.Filters.SprintWhitelist, strings.ToLower(c.SprintID))
+
+	return nil
+}
+
+// AddCurrentSprintToWhitelist adds the current sprint to the sprint whitelist
+func (c *Config) AddCurrentSprintToWhitelist() error {
+	if c.SprintID == "" {
+		return fmt.Errorf("current sprint not set - run 'config set-sprint-id <sprint-id>' first")
+	}
+
+	sprintID := strings.ToLower(c.SprintID)
+
+	if !slices.Contains(c.Filters.SprintWhitelist, sprintID) {
+		c.Filters.SprintWhitelist = append(c.Filters.SprintWhitelist, sprintID)
+	}
+
+	return nil
+}
+
+// RemoveCurrentSprintFromWhitelist removes the current sprint from the sprint whitelist
+func (c *Config) RemoveCurrentSprintFromWhitelist() error {
+	if c.SprintID == "" {
+		return fmt.Errorf("current sprint not set - run 'config set-sprint-id <sprint-id>' first")
+	}
+
+	sprintID := strings.ToLower(c.SprintID)
+	c.Filters.SprintWhitelist = removeFromSlice(c.Filters.SprintWhitelist, sprintID)
+
+	return nil
+}
+
+// AddCurrentSprintToBlacklist adds the current sprint to the sprint blacklist
+func (c *Config) AddCurrentSprintToBlacklist() error {
+	if c.SprintID == "" {
+		return fmt.Errorf("current sprint not set - run 'config set-sprint-id <sprint-id>' first")
+	}
+
+	sprintID := strings.ToLower(c.SprintID)
+
+	if !slices.Contains(c.Filters.SprintBlacklist, sprintID) {
+		c.Filters.SprintBlacklist = append(c.Filters.SprintBlacklist, sprintID)
+	}
+
+	return nil
+}
+
+// RemoveCurrentSprintFromBlacklist removes the current sprint from the sprint blacklist
+func (c *Config) RemoveCurrentSprintFromBlacklist() error {
+	if c.SprintID == "" {
+		return fmt.Errorf("current sprint not set - run 'config set-sprint-id <sprint-id>' first")
+	}
+
+	sprintID := strings.ToLower(c.SprintID)
+	c.Filters.SprintBlacklist = removeFromSlice(c.Filters.SprintBlacklist, sprintID)
+
+	return nil
+}
+
 func removeFromSlice(slice []string, item string) []string {
 	for i, v := range slice {
 		if v == item {
