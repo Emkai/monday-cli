@@ -131,10 +131,10 @@ func (c *Client) GetBoard(boardID string) (*Board, error) {
 }
 
 // GetBoardItemsByOwner retrieves items from a specific board filtered by owner using pagination
-func (c *Client) GetBoardItems(boardID string) ([]Task, error) {
+func (c *Client) GetBoardItems(boardID string) ([]Task, []Item, error) {
 	board, err := c.GetBoard(boardID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get board: %w", err)
+		return nil, nil, fmt.Errorf("failed to get board: %w", err)
 	}
 
 	// Find the owner column ID
@@ -146,7 +146,7 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, error) {
 		}
 	}
 	if ownerColumnID == "" {
-		return nil, fmt.Errorf("owner column not found in board")
+		return nil, nil, fmt.Errorf("owner column not found in board")
 	}
 
 	var allItems []Item
@@ -185,7 +185,7 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, error) {
 
 		resp, err := c.ExecuteQuery(query, variables)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		var result struct {
@@ -198,11 +198,11 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, error) {
 		}
 
 		if err := json.Unmarshal(resp.Data, &result); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal board items: %w", err)
+			return nil, nil, fmt.Errorf("failed to unmarshal board items: %w", err)
 		}
 
 		if len(result.Boards) == 0 {
-			return nil, fmt.Errorf("board not found")
+			return nil, nil, fmt.Errorf("board not found")
 		}
 
 		allItems = append(allItems, result.Boards[0].ItemsPage.Items...)
@@ -215,12 +215,15 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, error) {
 	}
 
 	var allTasks []Task
+	localId := 1
 	for _, item := range allItems {
 		task := Task{
 			ID:        item.ID,
+			LocalId:   localId,
 			Name:      item.Name,
 			UpdatedAt: item.UpdatedAt,
 		}
+		localId++
 		for _, cv := range item.ColumnValues {
 			if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
 				task.Status = Status(cv.Text)
@@ -243,7 +246,7 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, error) {
 		}
 		allTasks = append(allTasks, task)
 	}
-	return allTasks, nil
+	return allTasks, allItems, nil
 }
 
 func OrderTasks(tasks []Task) []Task {
@@ -624,18 +627,19 @@ func (c *Client) GetUserInfo() (*User, error) {
 
 // Helper functions for sorting
 func getSortableStatus(task Task) int {
-	switch task.Status {
-	case StatusDone:
+	status := strings.ToLower(string(task.Status))
+	switch {
+	case strings.Contains(status, "done"):
 		return 1
-	case StatusInProgress:
+	case strings.Contains(status, "in progress"):
 		return 2
-	case StatusStuck:
+	case strings.Contains(status, "stuck"):
 		return 3
-	case StatusWaitingForReview:
+	case strings.Contains(status, "waiting for review"):
 		return 4
-	case StatusReadyForTesting:
+	case strings.Contains(status, "ready for testing"):
 		return 5
-	case StatusRemoved:
+	case strings.Contains(status, "removed"):
 		return 6
 	default:
 		return 7
@@ -643,14 +647,15 @@ func getSortableStatus(task Task) int {
 }
 
 func getSortablePriority(task Task) int {
-	switch task.Priority {
-	case PriorityCritical:
+	priority := strings.ToLower(string(task.Priority))
+	switch {
+	case strings.Contains(priority, "critical"):
 		return 1
-	case PriorityHigh:
+	case strings.Contains(priority, "high"):
 		return 2
-	case PriorityMedium:
+	case strings.Contains(priority, "medium"):
 		return 3
-	case PriorityLow:
+	case strings.Contains(priority, "low"):
 		return 4
 	default:
 		return 5
@@ -658,18 +663,19 @@ func getSortablePriority(task Task) int {
 }
 
 func getSortableType(task Task) int {
-	switch task.Type {
-	case TypeBug:
+	taskType := strings.ToLower(string(task.Type))
+	switch {
+	case strings.Contains(taskType, "bug"):
 		return 1
-	case TypeFeature:
+	case strings.Contains(taskType, "feature"):
 		return 2
-	case TypeTest:
+	case strings.Contains(taskType, "test"):
 		return 3
-	case TypeSecurity:
+	case strings.Contains(taskType, "security"):
 		return 4
-	case TypeQuality:
+	case strings.Contains(taskType, "quality"):
 		return 5
-	case TypeOther:
+	case strings.Contains(taskType, "other"):
 		return 6
 	default:
 		return 7

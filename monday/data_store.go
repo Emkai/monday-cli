@@ -12,6 +12,7 @@ import (
 type TaskCache struct {
 	Tasks      map[string]Task
 	LocalIdMap map[int]string // Maps local index to task ID
+	RawItems   map[string]Item
 	Timestamp  time.Time
 }
 
@@ -32,21 +33,43 @@ func NewDataStore() *DataStore {
 	return ds
 }
 
+func (ds *DataStore) StoreRawItems(boardID string, items []Item) {
+	if _, exists := ds.cache[boardID]; !exists {
+		ds.cache[boardID] = TaskCache{
+			Tasks:      make(map[string]Task),
+			LocalIdMap: make(map[int]string),
+			RawItems:   make(map[string]Item),
+			Timestamp:  time.Now(),
+		}
+	}
+	for _, item := range items {
+		ds.cache[boardID].RawItems[item.ID] = item
+	}
+	if err := ds.Save(); err != nil {
+		fmt.Printf("Failed to save cache: %v\n", err)
+	}
+}
+
 // StoreTasksRequest caches a task request result
-func (ds *DataStore) StoreTasksRequest(boardID string, tasks []Task) {
+func (ds *DataStore) StoreTasksRequest(boardID string, tasks []Task, rawItems []Item) {
 	localIdMap := make(map[int]string)
 	tasksMap := make(map[string]Task)
-	localId := 1
 	for _, task := range tasks {
 		tasksMap[task.ID] = task
-		localIdMap[localId] = task.ID
-		task.localId = localId
-		localId++
+		if _, exists := localIdMap[task.LocalId]; exists {
+			fmt.Printf("Local ID %d already exists for task %s\n", task.LocalId, task.ID)
+		}
+		localIdMap[task.LocalId] = task.ID
+	}
+	rawItemsMap := make(map[string]Item)
+	for _, item := range rawItems {
+		rawItemsMap[item.ID] = item
 	}
 
 	ds.cache[boardID] = TaskCache{
 		Tasks:      tasksMap,
 		LocalIdMap: localIdMap,
+		RawItems:   rawItemsMap,
 		Timestamp:  time.Now(),
 	}
 
@@ -70,7 +93,7 @@ func (ds *DataStore) StoreTaskRequest(boardID string, task Task) (int, error) {
 		fmt.Printf("Failed to get task local ID: %v\n", err)
 		localId = len(ds.cache[boardID].LocalIdMap) + 1
 	}
-	task.localId = localId
+	task.LocalId = localId
 	ds.cache[boardID].LocalIdMap[localId] = task.ID
 
 	// Save cache to disk after update

@@ -107,6 +107,30 @@ func (c *CLI) HandleConfigCommand() {
 		fmt.Println("Board ID:", c.config.GetBoardID())
 		fmt.Println("Sprint ID:", c.config.GetSprintID())
 		return
+	case "add-filter", "addf":
+		c.HandleAddFilterCommand()
+		return
+	case "remove-filter", "remf":
+		c.HandleRemoveFilterCommand()
+		return
+	case "clear-filter", "clrf":
+		c.HandleClearFilterCommand()
+		return
+	case "list-filters", "listf":
+		c.HandleListFiltersCommand()
+		return
+	case "clear-all-filters", "clearallf":
+		c.HandleClearAllFiltersCommand()
+		return
+	case "filter-to-me", "me":
+		c.HandleFilterToMeCommand()
+		return
+	case "add-me", "addme":
+		c.HandleAddMeCommand()
+		return
+	case "remove-me", "removeme":
+		c.HandleRemoveMeCommand()
+		return
 	default:
 		c.HelpConfigCommand()
 		return
@@ -126,6 +150,25 @@ func (c *CLI) HelpConfigCommand() {
 	fmt.Println("  config set-board-id (board) <board-id>")
 	fmt.Println("  config set-sprint-id (sprint) <sprint-id>")
 	fmt.Println("  config show (s)")
+	fmt.Println("")
+	fmt.Println("Filter Commands:")
+	fmt.Println("  config add-filter (addf) <type> <whitelist|blacklist> <value>")
+	fmt.Println("  config remove-filter (remf) <type> <whitelist|blacklist> <value>")
+	fmt.Println("  config clear-filter (clrf) <type> <whitelist|blacklist>")
+	fmt.Println("  config list-filters (listf)")
+	fmt.Println("  config clear-all-filters (clearallf)")
+	fmt.Println("")
+	fmt.Println("User Filter Commands:")
+	fmt.Println("  config filter-to-me (me)           Show only tasks assigned to you")
+	fmt.Println("  config add-me (addme)              Add yourself to user whitelist")
+	fmt.Println("  config remove-me (removeme)        Remove yourself from user whitelist")
+	fmt.Println("")
+	fmt.Println("Filter Types: status, priority, type, sprint, user_name, user_email")
+	fmt.Println("Examples:")
+	fmt.Println("  config add-filter status whitelist 'in progress'")
+	fmt.Println("  config add-filter priority blacklist 'low'")
+	fmt.Println("  config remove-filter type whitelist 'bug'")
+	fmt.Println("  config filter-to-me")
 }
 
 func (c *CLI) HandleTasksCommand() {
@@ -159,7 +202,7 @@ func (c *CLI) HandleTasksCommand() {
 		fmt.Printf("📋 Board: %s (ID: %s)\n", board.Name, board.ID)
 		fmt.Println("-" + strings.Repeat("-", len(board.Name)+20))
 
-		items, err := client.GetBoardItems(boardID)
+		items, rawItems, err := client.GetBoardItems(boardID)
 		if err != nil {
 			fmt.Printf("❌ Error getting tasks: %v\n", err)
 			os.Exit(1)
@@ -172,7 +215,7 @@ func (c *CLI) HandleTasksCommand() {
 
 		dataStore := monday.NewDataStore()
 		dataStore.ClearCache(boardID)
-		dataStore.StoreTasksRequest(boardID, items)
+		dataStore.StoreTasksRequest(boardID, items, rawItems)
 		cacheItems, _, _ := dataStore.GetCachedTasks(boardID)
 		c.PrintItems(cacheItems)
 		return
@@ -459,4 +502,214 @@ func (c *CLI) HandleUserCommand() {
 func (c *CLI) HelpUserCommand() {
 	fmt.Println("User Commands:")
 	fmt.Println("  user info (i)   Show current user information")
+}
+
+// Filter command handlers
+func (c *CLI) HandleAddFilterCommand() {
+	if len(c.command.Args) < 4 {
+		fmt.Println("Usage: monday-cli config add-filter <type> <whitelist|blacklist> <value>")
+		fmt.Println("Types: status, priority, type, sprint, user_name, user_email")
+		fmt.Println("Example: monday-cli config add-filter status whitelist 'in progress'")
+		return
+	}
+
+	filterType := monday.FilterType(c.command.Args[1])
+	listType := monday.FilterListType(c.command.Args[2])
+	value := c.command.Args[3]
+
+	// Validate filter type
+	validTypes := []monday.FilterType{
+		monday.FilterStatus, monday.FilterPriority, monday.FilterTaskType,
+		monday.FilterSprint, monday.FilterUserName, monday.FilterUserEmail,
+	}
+	validType := false
+	for _, vt := range validTypes {
+		if filterType == vt {
+			validType = true
+			break
+		}
+	}
+	if !validType {
+		fmt.Printf("❌ Invalid filter type: %s\n", filterType)
+		fmt.Println("Valid types: status, priority, type, sprint, user_name, user_email")
+		return
+	}
+
+	// Validate list type
+	if listType != monday.Whitelist && listType != monday.Blacklist {
+		fmt.Printf("❌ Invalid list type: %s\n", listType)
+		fmt.Println("Valid types: whitelist, blacklist")
+		return
+	}
+
+	err := c.config.AddFilter(filterType, listType, value)
+	if err != nil {
+		fmt.Printf("❌ Error adding filter: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Printf("✅ Added '%s' to %s %s\n", value, listType, filterType)
+}
+
+func (c *CLI) HandleRemoveFilterCommand() {
+	if len(c.command.Args) < 4 {
+		fmt.Println("Usage: monday-cli config remove-filter <type> <whitelist|blacklist> <value>")
+		fmt.Println("Types: status, priority, type, sprint, user_name, user_email")
+		fmt.Println("Example: monday-cli config remove-filter status whitelist 'in progress'")
+		return
+	}
+
+	filterType := monday.FilterType(c.command.Args[1])
+	listType := monday.FilterListType(c.command.Args[2])
+	value := c.command.Args[3]
+
+	// Validate filter type
+	validTypes := []monday.FilterType{
+		monday.FilterStatus, monday.FilterPriority, monday.FilterTaskType,
+		monday.FilterSprint, monday.FilterUserName, monday.FilterUserEmail,
+	}
+	validType := false
+	for _, vt := range validTypes {
+		if filterType == vt {
+			validType = true
+			break
+		}
+	}
+	if !validType {
+		fmt.Printf("❌ Invalid filter type: %s\n", filterType)
+		fmt.Println("Valid types: status, priority, type, sprint, user_name, user_email")
+		return
+	}
+
+	// Validate list type
+	if listType != monday.Whitelist && listType != monday.Blacklist {
+		fmt.Printf("❌ Invalid list type: %s\n", listType)
+		fmt.Println("Valid types: whitelist, blacklist")
+		return
+	}
+
+	err := c.config.RemoveFilter(filterType, listType, value)
+	if err != nil {
+		fmt.Printf("❌ Error removing filter: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Printf("✅ Removed '%s' from %s %s\n", value, listType, filterType)
+}
+
+func (c *CLI) HandleClearFilterCommand() {
+	if len(c.command.Args) < 3 {
+		fmt.Println("Usage: monday-cli config clear-filter <type> <whitelist|blacklist>")
+		fmt.Println("Types: status, priority, type, sprint, user_name, user_email")
+		fmt.Println("Example: monday-cli config clear-filter status whitelist")
+		return
+	}
+
+	filterType := monday.FilterType(c.command.Args[1])
+	listType := monday.FilterListType(c.command.Args[2])
+
+	// Validate filter type
+	validTypes := []monday.FilterType{
+		monday.FilterStatus, monday.FilterPriority, monday.FilterTaskType,
+		monday.FilterSprint, monday.FilterUserName, monday.FilterUserEmail,
+	}
+	validType := false
+	for _, vt := range validTypes {
+		if filterType == vt {
+			validType = true
+			break
+		}
+	}
+	if !validType {
+		fmt.Printf("❌ Invalid filter type: %s\n", filterType)
+		fmt.Println("Valid types: status, priority, type, sprint, user_name, user_email")
+		return
+	}
+
+	// Validate list type
+	if listType != monday.Whitelist && listType != monday.Blacklist {
+		fmt.Printf("❌ Invalid list type: %s\n", listType)
+		fmt.Println("Valid types: whitelist, blacklist")
+		return
+	}
+
+	err := c.config.ClearFilter(filterType, listType)
+	if err != nil {
+		fmt.Printf("❌ Error clearing filter: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Printf("✅ Cleared %s %s\n", listType, filterType)
+}
+
+func (c *CLI) HandleListFiltersCommand() {
+	fmt.Println("🔍 Current Filters:")
+	fmt.Println("=" + strings.Repeat("=", 50))
+
+	filterTypes := []monday.FilterType{
+		monday.FilterStatus, monday.FilterPriority, monday.FilterTaskType,
+		monday.FilterSprint, monday.FilterUserName, monday.FilterUserEmail,
+	}
+
+	for _, filterType := range filterTypes {
+		fmt.Printf("\n📋 %s:\n", strings.ToUpper(string(filterType)))
+
+		// Show whitelist
+		whitelist := c.config.GetFilterValues(filterType, monday.Whitelist)
+		if len(whitelist) > 0 {
+			fmt.Printf("  ✅ Whitelist: %v\n", whitelist)
+		} else {
+			fmt.Printf("  ✅ Whitelist: (empty)\n")
+		}
+
+		// Show blacklist
+		blacklist := c.config.GetFilterValues(filterType, monday.Blacklist)
+		if len(blacklist) > 0 {
+			fmt.Printf("  ❌ Blacklist: %v\n", blacklist)
+		} else {
+			fmt.Printf("  ❌ Blacklist: (empty)\n")
+		}
+	}
+}
+
+func (c *CLI) HandleClearAllFiltersCommand() {
+	c.config.ClearAllFilters()
+	c.config.Save(monday.GetConfigPath())
+	fmt.Println("✅ Cleared all filters")
+}
+
+func (c *CLI) HandleFilterToMeCommand() {
+	err := c.config.FilterToCurrentUser()
+	if err != nil {
+		fmt.Printf("❌ Error filtering to current user: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Println("✅ Filtered to show only tasks assigned to you")
+}
+
+func (c *CLI) HandleAddMeCommand() {
+	err := c.config.AddCurrentUserToWhitelist()
+	if err != nil {
+		fmt.Printf("❌ Error adding current user to whitelist: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Println("✅ Added current user to whitelist")
+}
+
+func (c *CLI) HandleRemoveMeCommand() {
+	err := c.config.RemoveCurrentUserFromWhitelist()
+	if err != nil {
+		fmt.Printf("❌ Error removing current user from whitelist: %v\n", err)
+		return
+	}
+
+	c.config.Save(monday.GetConfigPath())
+	fmt.Println("✅ Removed current user from whitelist")
 }

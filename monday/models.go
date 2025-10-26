@@ -63,7 +63,7 @@ type Column struct {
 
 // Item represents a Monday.com board item
 type Task struct {
-	localId   int       `json:"local_id"`
+	LocalId   int       `json:"local_id"`
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Status    Status    `json:"status"`

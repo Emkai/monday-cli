@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 )
 
 type Filters struct {
@@ -301,6 +303,314 @@ func (c *Config) HasUserInfo() bool {
 // GetUserEmail returns the user email
 func (c *Config) GetUserEmail() string {
 	return c.UserEmail
+}
+
+// FilterType represents the type of filter
+type FilterType string
+
+const (
+	FilterStatus    FilterType = "status"
+	FilterPriority  FilterType = "priority"
+	FilterTaskType  FilterType = "type"
+	FilterSprint    FilterType = "sprint"
+	FilterUserName  FilterType = "user_name"
+	FilterUserEmail FilterType = "user_email"
+)
+
+// FilterListType represents whether it's a whitelist or blacklist
+type FilterListType string
+
+const (
+	Whitelist FilterListType = "whitelist"
+	Blacklist FilterListType = "blacklist"
+)
+
+// AddFilter adds a value to the specified filter list
+func (c *Config) AddFilter(filterType FilterType, listType FilterListType, value string) error {
+	value = strings.ToLower(value)
+	switch filterType {
+	case FilterStatus:
+		if listType == Whitelist {
+			c.AddStatusWhitelist(value)
+		} else {
+			c.AddStatusBlacklist(value)
+		}
+	case FilterPriority:
+		if listType == Whitelist {
+			c.AddPriorityWhitelist(value)
+		} else {
+			c.AddPriorityBlacklist(value)
+		}
+	case FilterTaskType:
+		if listType == Whitelist {
+			c.AddTypeWhitelist(value)
+		} else {
+			c.AddTypeBlacklist(value)
+		}
+	case FilterSprint:
+		if listType == Whitelist {
+			c.AddSprintWhitelist(value)
+		} else {
+			c.AddSprintBlacklist(value)
+		}
+	case FilterUserName:
+		if listType == Whitelist {
+			c.AddUserNameWhitelist(value)
+		} else {
+			c.AddUserNameBlacklist(value)
+		}
+	case FilterUserEmail:
+		if listType == Whitelist {
+			c.AddUserEmailWhitelist(value)
+		} else {
+			c.AddUserEmailBlacklist(value)
+		}
+	default:
+		return fmt.Errorf("unknown filter type: %s", filterType)
+	}
+	return nil
+}
+
+// RemoveFilter removes a value from the specified filter list
+func (c *Config) RemoveFilter(filterType FilterType, listType FilterListType, value string) error {
+	value = strings.ToLower(value)
+	switch filterType {
+	case FilterStatus:
+		if listType == Whitelist {
+			c.RemoveStatusWhitelist(value)
+		} else {
+			c.RemoveStatusBlacklist(value)
+		}
+	case FilterPriority:
+		if listType == Whitelist {
+			c.RemovePriorityWhitelist(value)
+		} else {
+			c.RemovePriorityBlacklist(value)
+		}
+	case FilterTaskType:
+		if listType == Whitelist {
+			c.RemoveTypeWhitelist(value)
+		} else {
+			c.RemoveTypeBlacklist(value)
+		}
+	case FilterSprint:
+		if listType == Whitelist {
+			c.RemoveSprintWhitelist(value)
+		} else {
+			c.RemoveSprintBlacklist(value)
+		}
+	case FilterUserName:
+		if listType == Whitelist {
+			c.RemoveUserNameWhitelist(value)
+		} else {
+			c.RemoveUserNameBlacklist(value)
+		}
+	case FilterUserEmail:
+		if listType == Whitelist {
+			c.RemoveUserEmailWhitelist(value)
+		} else {
+			c.RemoveUserEmailBlacklist(value)
+		}
+	default:
+		return fmt.Errorf("unknown filter type: %s", filterType)
+	}
+	return nil
+}
+
+// ClearFilter clears all values from the specified filter list
+func (c *Config) ClearFilter(filterType FilterType, listType FilterListType) error {
+	switch filterType {
+	case FilterStatus:
+		if listType == Whitelist {
+			c.Filters.StatusWhitelist = []string{}
+		} else {
+			c.Filters.StatusBlacklist = []string{}
+		}
+	case FilterPriority:
+		if listType == Whitelist {
+			c.Filters.PriorityWhitelist = []string{}
+		} else {
+			c.Filters.PriorityBlacklist = []string{}
+		}
+	case FilterTaskType:
+		if listType == Whitelist {
+			c.Filters.TypeWhitelist = []string{}
+		} else {
+			c.Filters.TypeBlacklist = []string{}
+		}
+	case FilterSprint:
+		if listType == Whitelist {
+			c.Filters.SprintWhitelist = []string{}
+		} else {
+			c.Filters.SprintBlacklist = []string{}
+		}
+	case FilterUserName:
+		if listType == Whitelist {
+			c.Filters.UserNameWhitelist = []string{}
+		} else {
+			c.Filters.UserNameBlacklist = []string{}
+		}
+	case FilterUserEmail:
+		if listType == Whitelist {
+			c.Filters.UserEmailWhitelist = []string{}
+		} else {
+			c.Filters.UserEmailBlacklist = []string{}
+		}
+	default:
+		return fmt.Errorf("unknown filter type: %s", filterType)
+	}
+	return nil
+}
+
+// GetFilterValues returns the values for the specified filter list
+func (c *Config) GetFilterValues(filterType FilterType, listType FilterListType) []string {
+	switch filterType {
+	case FilterStatus:
+		if listType == Whitelist {
+			return c.Filters.StatusWhitelist
+		} else {
+			return c.Filters.StatusBlacklist
+		}
+	case FilterPriority:
+		if listType == Whitelist {
+			return c.Filters.PriorityWhitelist
+		} else {
+			return c.Filters.PriorityBlacklist
+		}
+	case FilterTaskType:
+		if listType == Whitelist {
+			return c.Filters.TypeWhitelist
+		} else {
+			return c.Filters.TypeBlacklist
+		}
+	case FilterSprint:
+		if listType == Whitelist {
+			return c.Filters.SprintWhitelist
+		} else {
+			return c.Filters.SprintBlacklist
+		}
+	case FilterUserName:
+		if listType == Whitelist {
+			return c.Filters.UserNameWhitelist
+		} else {
+			return c.Filters.UserNameBlacklist
+		}
+	case FilterUserEmail:
+		if listType == Whitelist {
+			return c.Filters.UserEmailWhitelist
+		} else {
+			return c.Filters.UserEmailBlacklist
+		}
+	default:
+		return []string{}
+	}
+}
+
+// ClearAllFilters clears all filter lists
+func (c *Config) ClearAllFilters() {
+	c.Filters = Filters{
+		UserNameWhitelist:  []string{},
+		UserNameBlacklist:  []string{},
+		UserEmailWhitelist: []string{},
+		UserEmailBlacklist: []string{},
+		StatusWhitelist:    []string{},
+		StatusBlacklist:    []string{},
+		PriorityWhitelist:  []string{},
+		PriorityBlacklist:  []string{},
+		TypeWhitelist:      []string{},
+		TypeBlacklist:      []string{},
+		SprintWhitelist:    []string{},
+		SprintBlacklist:    []string{},
+	}
+}
+
+// Convenience methods for current user filtering
+// FilterToCurrentUser sets filters to show only tasks assigned to the current user
+func (c *Config) FilterToCurrentUser() error {
+	if !c.HasUserInfo() {
+		return fmt.Errorf("user information not available - run 'user info' first")
+	}
+
+	// Clear existing user filters
+	c.Filters.UserNameWhitelist = []string{}
+	c.Filters.UserNameBlacklist = []string{}
+	c.Filters.UserEmailWhitelist = []string{}
+	c.Filters.UserEmailBlacklist = []string{}
+
+	// Add current user to whitelist
+	c.Filters.UserNameWhitelist = append(c.Filters.UserNameWhitelist, strings.ToLower(c.UserName))
+	c.Filters.UserEmailWhitelist = append(c.Filters.UserEmailWhitelist, strings.ToLower(c.UserEmail))
+
+	return nil
+}
+
+// AddCurrentUserToWhitelist adds the current user to the user whitelist
+func (c *Config) AddCurrentUserToWhitelist() error {
+	if !c.HasUserInfo() {
+		return fmt.Errorf("user information not available - run 'user info' first")
+	}
+
+	// Add current user to whitelist if not already present
+	userName := strings.ToLower(c.UserName)
+	userEmail := strings.ToLower(c.UserEmail)
+
+	if !slices.Contains(c.Filters.UserNameWhitelist, userName) {
+		c.Filters.UserNameWhitelist = append(c.Filters.UserNameWhitelist, userName)
+	}
+	if !slices.Contains(c.Filters.UserEmailWhitelist, userEmail) {
+		c.Filters.UserEmailWhitelist = append(c.Filters.UserEmailWhitelist, userEmail)
+	}
+
+	return nil
+}
+
+// RemoveCurrentUserFromWhitelist removes the current user from the user whitelist
+func (c *Config) RemoveCurrentUserFromWhitelist() error {
+	if !c.HasUserInfo() {
+		return fmt.Errorf("user information not available - run 'user info' first")
+	}
+
+	userName := strings.ToLower(c.UserName)
+	userEmail := strings.ToLower(c.UserEmail)
+
+	c.Filters.UserNameWhitelist = removeFromSlice(c.Filters.UserNameWhitelist, userName)
+	c.Filters.UserEmailWhitelist = removeFromSlice(c.Filters.UserEmailWhitelist, userEmail)
+
+	return nil
+}
+
+// AddCurrentUserToBlacklist adds the current user to the user blacklist
+func (c *Config) AddCurrentUserToBlacklist() error {
+	if !c.HasUserInfo() {
+		return fmt.Errorf("user information not available - run 'user info' first")
+	}
+
+	userName := strings.ToLower(c.UserName)
+	userEmail := strings.ToLower(c.UserEmail)
+
+	if !slices.Contains(c.Filters.UserNameBlacklist, userName) {
+		c.Filters.UserNameBlacklist = append(c.Filters.UserNameBlacklist, userName)
+	}
+	if !slices.Contains(c.Filters.UserEmailBlacklist, userEmail) {
+		c.Filters.UserEmailBlacklist = append(c.Filters.UserEmailBlacklist, userEmail)
+	}
+
+	return nil
+}
+
+// RemoveCurrentUserFromBlacklist removes the current user from the user blacklist
+func (c *Config) RemoveCurrentUserFromBlacklist() error {
+	if !c.HasUserInfo() {
+		return fmt.Errorf("user information not available - run 'user info' first")
+	}
+
+	userName := strings.ToLower(c.UserName)
+	userEmail := strings.ToLower(c.UserEmail)
+
+	c.Filters.UserNameBlacklist = removeFromSlice(c.Filters.UserNameBlacklist, userName)
+	c.Filters.UserEmailBlacklist = removeFromSlice(c.Filters.UserEmailBlacklist, userEmail)
+
+	return nil
 }
 
 func removeFromSlice(slice []string, item string) []string {

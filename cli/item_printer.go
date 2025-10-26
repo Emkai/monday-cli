@@ -3,6 +3,7 @@ package cli
 import (
 	"emkai/go-cli-gui/monday"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -74,7 +75,11 @@ func (c *CLI) PrintItems(tasks map[string]monday.Task) {
 			currentStatus = string(task.Status)
 			statusIcon := getStatusIcon(currentStatus)
 			statusColor := getStatusColor(currentStatus)
-			fmt.Printf("%s %s\n", statusIcon, colorize(currentStatus, statusColor))
+			if currentStatus == "" {
+				fmt.Printf("\n%s %s\n", statusIcon, colorize("None", ColorWhite))
+			} else {
+				fmt.Printf("\n%s %s\n", statusIcon, colorize(currentStatus, statusColor))
+			}
 		}
 		if isActiveStatus(string(task.Status)) {
 			activeCount++
@@ -98,11 +103,13 @@ func PrintTask(task monday.Task) {
 	priorityColor := getPriorityColor(string(task.Priority))
 	taskTypeIcon := getTypeIcon(string(task.Type))
 
-	fmt.Printf("%s. %s [%s] %s\n",
-		task.ID,
+	fmt.Printf("%s. %s [%s] %s, (%s, %s)\n",
+		padLocalId(task.LocalId),
 		taskTypeIcon,
-		colorize(string(task.Priority), priorityColor),
+		colorize(padPriority(string(task.Priority)), priorityColor),
 		task.Name,
+		task.UserName,
+		task.UserEmail,
 	)
 }
 
@@ -224,4 +231,20 @@ func getTypeColor(taskType string) string {
 		}
 	}
 	return ColorWhite
+}
+
+func padPriority(priority string) string {
+	maxLen := 8 // "critical" is the longest priority string (8 letters)
+	padding := maxLen - len(priority)
+	leftPad := padding / 2
+	rightPad := padding - leftPad
+	return strings.Repeat(" ", leftPad+1) + priority + strings.Repeat(" ", rightPad+1)
+}
+
+func padLocalId(localId int) string {
+	s := strconv.Itoa(localId)
+	for len(s) < 4 {
+		s = " " + s
+	}
+	return s
 }
