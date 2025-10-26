@@ -6,91 +6,104 @@ import (
 	"strings"
 )
 
-func (c *CLI) PrintItems(items map[string]monday.Item, sortedItems []monday.Item) {
-	var activeItems map[string]monday.Item = make(map[string]monday.Item)
-	sprintID := c.config.GetSprintID()
-	for id, item := range items {
-		skipTask := false
-		for _, cv := range item.ColumnValues {
-			if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
-				status := strings.ToLower(cv.Text)
-				if strings.Contains(status, "done") || strings.Contains(status, "completed") {
-					skipTask = true
-					break
-				}
-			}
-			if sprintID != "" && strings.Contains(strings.ToLower(cv.ID), "sprint") && cv.Text != "" {
-				sprint := strings.ToLower(cv.Text)
-				if strings.Contains(sprint, sprintID) {
-					skipTask = true
-					break
-				}
-			}
-		}
-		if !skipTask {
-			activeItems[id] = item
-		}
+// ANSI color codes
+const (
+	ColorReset   = "\033[0m"
+	ColorRed     = "\033[31m"
+	ColorGreen   = "\033[32m"
+	ColorYellow  = "\033[33m"
+	ColorBlue    = "\033[34m"
+	ColorMagenta = "\033[35m"
+	ColorCyan    = "\033[36m"
+	ColorWhite   = "\033[37m"
+	ColorGray    = "\033[90m"
+)
+
+// Color helper functions
+func colorize(text, color string) string {
+	return color + text + ColorReset
+}
+
+// Maps for assigning colors by value
+var statusColorMap = map[string]string{
+	"done":        ColorGreen,
+	"completed":   ColorGreen,
+	"in progress": ColorBlue,
+	"progress":    ColorBlue,
+	"review":      ColorMagenta,
+	"stuck":       ColorRed,
+	"blocked":     ColorRed,
+	"testing":     ColorCyan,
+	"not started": ColorGray,
+	"removed":     ColorGray,
+}
+
+var priorityColorMap = map[string]string{
+	"critical": ColorRed,
+	"high":     ColorYellow,
+	"medium":   ColorBlue,
+	"low":      ColorGreen,
+}
+
+var typeColorMap = map[string]string{
+	"bug":      ColorRed,
+	"feature":  ColorGreen,
+	"test":     ColorCyan,
+	"security": ColorMagenta,
+	"quality":  ColorBlue,
+	"other":    ColorWhite,
+}
+
+func (c *CLI) PrintItems(tasks map[string]monday.Task) {
+	tasksList := make([]monday.Task, 0, len(tasks))
+	for _, task := range tasks {
+		tasksList = append(tasksList, task)
 	}
 
-	if len(activeItems) == 0 {
-		fmt.Printf("🎉 No active tasks assigned to %s in %s\n", c.config.GetUserEmail(), c.config.GetBoardID())
-		return
-	}
+	filteredTasks := monday.FilterTasks(tasksList, c.config.GetFilters())
 
-	fmt.Printf("👤 Found %d tasks assigned to %s:\n\n", len(items), c.config.GetUserEmail())
+	fmt.Printf("👤 Found %d tasks to matching filters:\n\n", len(filteredTasks))
 
-	fmt.Println("Type [Status Priority] Task Name")
-	// Get index mapping for local indices
-	dataStore := monday.NewDataStore()
-	indexMap, hasIndexMap := dataStore.GetIndexMap(c.config.GetBoardID(), c.config.GetUserEmail())
+	sortedTasks := monday.OrderTasks(filteredTasks)
 
-	// Use sortedItems to maintain order, but only print active items
-	for _, item := range sortedItems {
-		// Find the ID for this item in the map
-		for id, mapItem := range items {
-			if mapItem.ID == item.ID {
-				if _, isActive := activeItems[id]; isActive {
-					// Use local index for display if available, otherwise use task ID
-					displayID := id
-					if hasIndexMap {
-						// Find the local index for this task ID
-						for idx, taskID := range indexMap {
-							if taskID == id {
-								displayID = fmt.Sprintf("%d", idx)
-								break
-							}
-						}
-					}
-					PrintTask(displayID, item)
-				}
-				break
-			}
+	currentStatus := ""
+	activeCount := 0
+	for i := 0; i < len(sortedTasks); i++ {
+		task := sortedTasks[i]
+		if string(task.Status) != currentStatus {
+			currentStatus = string(task.Status)
+			statusIcon := getStatusIcon(currentStatus)
+			statusColor := getStatusColor(currentStatus)
+			fmt.Printf("%s %s\n", statusIcon, colorize(currentStatus, statusColor))
 		}
+		if isActiveStatus(string(task.Status)) {
+			activeCount++
+		}
+		PrintTask(task)
 	}
 
 	fmt.Println("=" + strings.Repeat("=", 50))
-	fmt.Printf("📊 Active tasks: %d\n", len(activeItems))
-
+	fmt.Printf("📊 Active tasks: %d\n", activeCount)
 }
 
-func PrintTask(id string, item monday.Item) {
+// Define which statuses are considered 'active'
+func isActiveStatus(status string) bool {
+	status = strings.ToLower(status)
+	// You can adjust these according to your workflow
+	return !(strings.Contains(status, "done") || strings.Contains(status, "completed") || strings.Contains(status, "removed"))
+}
+
+func PrintTask(task monday.Task) {
 	// Extract status, priority, and type
-	status := "📋"
-	priority := "⚪"
-	taskType := "📋"
+	priorityColor := getPriorityColor(string(task.Priority))
+	taskTypeIcon := getTypeIcon(string(task.Type))
 
-	for _, cv := range item.ColumnValues {
-		if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
-			status = getStatusIcon(cv.Text)
-		} else if strings.Contains(strings.ToLower(cv.ID), "priority") && cv.Text != "" {
-			priority = getPriorityIcon(cv.Text)
-		} else if strings.Contains(strings.ToLower(cv.ID), "type") && cv.Text != "" {
-			taskType = getTypeIcon(cv.Text)
-		}
-	}
-
-	// Format: [icon] Task Name | Priority Type
-	fmt.Printf("%s. %s [%s %s] %s\n", id, taskType, status, priority, item.Name)
+	fmt.Printf("%s. %s [%s] %s\n",
+		task.ID,
+		taskTypeIcon,
+		colorize(string(task.Priority), priorityColor),
+		task.Name,
+	)
 }
 
 // Icon helper functions
@@ -180,4 +193,35 @@ func PrintCommand(cmd Command) {
 	for _, flag := range cmd.Flags {
 		fmt.Println("    Flag: " + flag.Flag + " Value: " + flag.Value)
 	}
+}
+
+// Color assignment logic
+func getStatusColor(status string) string {
+	status = strings.ToLower(status)
+	for k, c := range statusColorMap {
+		if strings.Contains(status, k) {
+			return c
+		}
+	}
+	return ColorWhite
+}
+
+func getPriorityColor(priority string) string {
+	priority = strings.ToLower(priority)
+	for k, c := range priorityColorMap {
+		if strings.Contains(priority, k) {
+			return c
+		}
+	}
+	return ColorWhite
+}
+
+func getTypeColor(taskType string) string {
+	taskType = strings.ToLower(taskType)
+	for k, c := range typeColorMap {
+		if strings.Contains(taskType, k) {
+			return c
+		}
+	}
+	return ColorWhite
 }

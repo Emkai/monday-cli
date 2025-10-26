@@ -131,8 +131,7 @@ func (c *Client) GetBoard(boardID string) (*Board, error) {
 }
 
 // GetBoardItemsByOwner retrieves items from a specific board filtered by owner using pagination
-func (c *Client) GetBoardItemsByOwner(boardID, ownerEmail string) ([]Item, error) {
-	// First, get the board to find the owner column ID
+func (c *Client) GetBoardItems(boardID string) ([]Task, error) {
 	board, err := c.GetBoard(boardID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get board: %w", err)
@@ -206,33 +205,51 @@ func (c *Client) GetBoardItemsByOwner(boardID, ownerEmail string) ([]Item, error
 			return nil, fmt.Errorf("board not found")
 		}
 
-		// Filter items by owner and add to collection
-		for _, item := range result.Boards[0].ItemsPage.Items {
-			for _, cv := range item.ColumnValues {
-				if cv.ID == ownerColumnID && strings.Contains(strings.ToLower(cv.Text), strings.ToLower(ownerEmail)) {
-					allItems = append(allItems, item)
-					break
-				}
-			}
-		}
+		allItems = append(allItems, result.Boards[0].ItemsPage.Items...)
 
-		// Check if we have enough items or no more pages
 		cursor = result.Boards[0].ItemsPage.Cursor
 		if cursor == "" || len(result.Boards[0].ItemsPage.Items) < limit {
 			break
 		}
-		fmt.Printf("Fetching next page... currently %d items for %s\n", len(allItems), ownerEmail)
+		fmt.Printf("Fetching next page... currently %d items\n", len(allItems))
 	}
 
-	allItems = OrderItems(allItems)
-	return allItems, nil
+	var allTasks []Task
+	for _, item := range allItems {
+		task := Task{
+			ID:        item.ID,
+			Name:      item.Name,
+			UpdatedAt: item.UpdatedAt,
+		}
+		for _, cv := range item.ColumnValues {
+			if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
+				task.Status = Status(cv.Text)
+			}
+			if strings.Contains(strings.ToLower(cv.ID), "priority") && cv.Text != "" {
+				task.Priority = Priority(cv.Text)
+			}
+			if strings.Contains(strings.ToLower(cv.ID), "type") && cv.Text != "" {
+				task.Type = Type(cv.Text)
+			}
+			if strings.Contains(strings.ToLower(cv.ID), "sprint") && cv.Text != "" {
+				task.Sprint = Sprint(cv.Text)
+			}
+			if strings.Contains(strings.ToLower(cv.ID), "user_name") && cv.Text != "" {
+				task.UserName = cv.Text
+			}
+			if strings.Contains(strings.ToLower(cv.ID), "user_email") && cv.Text != "" {
+				task.UserEmail = cv.Text
+			}
+		}
+		allTasks = append(allTasks, task)
+	}
+	return allTasks, nil
 }
 
-func OrderItems(items []Item) []Item {
-	// Sort items by status, priority, then type
-	sort.Slice(items, func(i, j int) bool {
-		statusI := getSortableStatus(items[i])
-		statusJ := getSortableStatus(items[j])
+func OrderTasks(tasks []Task) []Task {
+	sort.Slice(tasks, func(i, j int) bool {
+		statusI := getSortableStatus(tasks[i])
+		statusJ := getSortableStatus(tasks[j])
 
 		// First sort by status
 		if statusI != statusJ {
@@ -240,19 +257,19 @@ func OrderItems(items []Item) []Item {
 		}
 
 		// Then by priority
-		priorityI := getSortablePriority(items[i])
-		priorityJ := getSortablePriority(items[j])
+		priorityI := getSortablePriority(tasks[i])
+		priorityJ := getSortablePriority(tasks[j])
 		if priorityI != priorityJ {
 			return priorityI < priorityJ
 		}
 
 		// Finally by type
-		typeI := getSortableType(items[i])
-		typeJ := getSortableType(items[j])
+		typeI := getSortableType(tasks[i])
+		typeJ := getSortableType(tasks[j])
 		return typeI < typeJ
 
 	})
-	return items
+	return tasks
 }
 
 func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStatus string) error {
@@ -311,7 +328,7 @@ func (c *Client) UpdateTaskStatus(boardID, ownerEmail string, task Item, newStat
 }
 
 // UpdateTask updates multiple fields of a task
-func (c *Client) UpdateTask(boardID, ownerEmail string, task Item, status, priority, taskType string) (*Item, error) {
+func (c *Client) UpdateTask(boardID, ownerEmail string, task Task, status, priority, taskType string) (*Task, error) {
 	// First, get the board to find the column IDs
 	board, err := c.GetBoard(boardID)
 	if err != nil {
@@ -396,12 +413,12 @@ func (c *Client) UpdateTask(boardID, ownerEmail string, task Item, status, prior
 	return updatedTask, nil
 }
 
-func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskType string) (*Item, error) {
+func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskType string) (int, *Task, error) {
 
 	// Get board to find column IDs
 	board, err := c.GetBoard(boardID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get board: %w", err)
+		return 0, nil, fmt.Errorf("failed to get board: %w", err)
 	}
 
 	// Find column IDs
@@ -455,11 +472,11 @@ func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskTyp
 
 	resp, err := c.ExecuteQuery(query, variables)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create task: %w", err)
+		return 0, nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
 	if len(resp.Errors) > 0 {
-		return nil, fmt.Errorf("failed to create task: %v", resp.Errors)
+		return 0, nil, fmt.Errorf("failed to create task: %v", resp.Errors)
 	}
 
 	fmt.Printf("✅ Task %s created\n", resp.Data)
@@ -473,23 +490,23 @@ func (c *Client) CreateTask(boardID, userID, taskName, status, priority, taskTyp
 
 	if err := json.Unmarshal(resp.Data, &createResult); err != nil {
 		fmt.Printf("Warning: Could not parse created task ID: %v\n", err)
-		return nil, fmt.Errorf("failed to parse created task ID: %v", err)
+		return 0, nil, fmt.Errorf("failed to parse created task ID: %v", err)
 	}
 
 	// Fetch the newly created task and add it to cache
 	if createResult.CreateItem.ID != "" {
-		task, err := c.fetchAndCacheNewTask(boardID, createResult.CreateItem.ID)
+		localId, task, err := c.fetchAndCacheNewTask(boardID, createResult.CreateItem.ID)
 		if err != nil {
 			fmt.Printf("Warning: Could not fetch and cache new task: %v\n", err)
 		}
-		return task, nil
+		return localId, task, nil
 	}
 
-	return nil, fmt.Errorf("failed to create task: %v", resp.Errors)
+	return 0, nil, fmt.Errorf("failed to create task: %v", resp.Errors)
 }
 
 // GetTaskByID retrieves a specific task by ID
-func (c *Client) GetTaskByID(taskID string) (*Item, error) {
+func (c *Client) GetTaskByID(taskID string) (*Task, error) {
 	query := `
 		query GetTask($itemId: ID!) {
 			items(ids: [$itemId]) {
@@ -526,39 +543,52 @@ func (c *Client) GetTaskByID(taskID string) (*Item, error) {
 		return nil, fmt.Errorf("task not found")
 	}
 
-	return &result.Items[0], nil
+	task := Task{
+		ID:        result.Items[0].ID,
+		Name:      result.Items[0].Name,
+		UpdatedAt: result.Items[0].UpdatedAt,
+	}
+	for _, cv := range result.Items[0].ColumnValues {
+		if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
+			task.Status = Status(cv.Text)
+		}
+		if strings.Contains(strings.ToLower(cv.ID), "priority") && cv.Text != "" {
+			task.Priority = Priority(cv.Text)
+		}
+		if strings.Contains(strings.ToLower(cv.ID), "type") && cv.Text != "" {
+			task.Type = Type(cv.Text)
+		}
+		if strings.Contains(strings.ToLower(cv.ID), "sprint") && cv.Text != "" {
+			task.Sprint = Sprint(cv.Text)
+		}
+		if strings.Contains(strings.ToLower(cv.ID), "user_name") && cv.Text != "" {
+			task.UserName = cv.Text
+		}
+		if strings.Contains(strings.ToLower(cv.ID), "user_email") && cv.Text != "" {
+			task.UserEmail = cv.Text
+		}
+	}
+
+	return &task, nil
 }
 
 // fetchAndCacheNewTask fetches a newly created task and adds it to the cache
-func (c *Client) fetchAndCacheNewTask(boardID, taskID string) (*Item, error) {
+func (c *Client) fetchAndCacheNewTask(boardID, taskID string) (int, *Task, error) {
 	// Get the task details
 	task, err := c.GetTaskByID(taskID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch task: %w", err)
-	}
-
-	// Get current user info to determine cache key
-	user, err := c.GetUserInfo()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
+		return 0, nil, fmt.Errorf("failed to fetch task: %w", err)
 	}
 
 	// Load existing cache
 	dataStore := NewDataStore()
-	existingTasks, _, exists := dataStore.GetCachedTasks(boardID, user.Email)
-
-	if !exists {
-		existingTasks = make(map[string]Item)
+	localId, err := dataStore.StoreTaskRequest(boardID, *task)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to store task: %w", err)
 	}
 
-	// Add the new task to existing cache using task ID as string key
-	existingTasks[taskID] = *task
-
-	// Store updated cache (this will automatically create new index mapping)
-	dataStore.StoreTaskRequest(boardID, user.Email, existingTasks)
-
-	fmt.Printf("📝 Task %s added to local cache\n", task.Name)
-	return task, nil
+	fmt.Printf("📝 Task %s added to local cache with ID %d\n", task.Name, localId)
+	return localId, task, nil
 }
 
 // GetUserInfo retrieves the current user's information
@@ -593,69 +623,55 @@ func (c *Client) GetUserInfo() (*User, error) {
 }
 
 // Helper functions for sorting
-func getSortableStatus(item Item) int {
-	for _, cv := range item.ColumnValues {
-		if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
-			status := strings.ToLower(cv.Text)
-			switch {
-			case strings.Contains(status, "done") || strings.Contains(status, "completed"):
-				return 1 // Done first
-			case strings.Contains(status, "progress") || strings.Contains(status, "in progress"):
-				return 2 // In progress second
-			case strings.Contains(status, "stuck") || strings.Contains(status, "blocked"):
-				return 3 // Stuck third
-			case strings.Contains(status, "review"):
-				return 4 // Review fourth
-			case strings.Contains(status, "testing") || strings.Contains(status, "not started"):
-				return 5 // Todo last
-			default:
-				return 6 // Unknown status last
-			}
-		}
+func getSortableStatus(task Task) int {
+	switch task.Status {
+	case StatusDone:
+		return 1
+	case StatusInProgress:
+		return 2
+	case StatusStuck:
+		return 3
+	case StatusWaitingForReview:
+		return 4
+	case StatusReadyForTesting:
+		return 5
+	case StatusRemoved:
+		return 6
+	default:
+		return 7
 	}
-	return 6 // Default to last if no status found
 }
 
-func getSortablePriority(item Item) int {
-	for _, cv := range item.ColumnValues {
-		if strings.Contains(strings.ToLower(cv.ID), "priority") && cv.Text != "" {
-			priority := strings.ToLower(cv.Text)
-			switch {
-			case strings.Contains(priority, "critical"):
-				return 1 // Critical first
-			case strings.Contains(priority, "high"):
-				return 2 // High second
-			case strings.Contains(priority, "medium"):
-				return 3 // Medium third
-			case strings.Contains(priority, "low"):
-				return 4 // Low fourth
-			default:
-				return 5 // Unknown priority last
-			}
-		}
+func getSortablePriority(task Task) int {
+	switch task.Priority {
+	case PriorityCritical:
+		return 1
+	case PriorityHigh:
+		return 2
+	case PriorityMedium:
+		return 3
+	case PriorityLow:
+		return 4
+	default:
+		return 5
 	}
-	return 5 // Default to last if no priority found
 }
 
-func getSortableType(item Item) int {
-	for _, cv := range item.ColumnValues {
-		if strings.Contains(strings.ToLower(cv.ID), "type") && cv.Text != "" {
-			taskType := strings.ToLower(cv.Text)
-			switch {
-			case strings.Contains(taskType, "bug"):
-				return 1 // Bug first
-			case strings.Contains(taskType, "feature"):
-				return 2 // Feature second
-			case strings.Contains(taskType, "test"):
-				return 3 // Test third
-			case strings.Contains(taskType, "security"):
-				return 4 // Security fourth
-			case strings.Contains(taskType, "improvement"):
-				return 5 // Improvement fifth
-			default:
-				return 6 // Other types last
-			}
-		}
+func getSortableType(task Task) int {
+	switch task.Type {
+	case TypeBug:
+		return 1
+	case TypeFeature:
+		return 2
+	case TypeTest:
+		return 3
+	case TypeSecurity:
+		return 4
+	case TypeQuality:
+		return 5
+	case TypeOther:
+		return 6
+	default:
+		return 7
 	}
-	return 6 // Default to last if no type found
 }

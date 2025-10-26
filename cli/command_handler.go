@@ -137,25 +137,18 @@ func (c *CLI) HandleTasksCommand() {
 	switch subcommand {
 	case "list", "ls":
 		dataStore := monday.NewDataStore()
-		tasks, timestamp, _ := dataStore.GetCachedTasks(c.config.GetBoardID(), c.config.GetUserEmail())
+		tasks, timestamp, _ := dataStore.GetCachedTasks(c.config.GetBoardID())
 		fmt.Println("Tasks cached at: " + timestamp.Format(time.RFC3339))
-		var sortedTasks []monday.Item
-		for _, task := range tasks {
-			sortedTasks = append(sortedTasks, task)
-		}
-		sortedTasks = monday.OrderItems(sortedTasks)
-		c.PrintItems(tasks, sortedTasks)
+		c.PrintItems(tasks)
 		return
 	case "fetch", "f":
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
 
 		boardID := c.config.GetBoardID()
-		ownerEmail := c.config.GetUserEmail()
 
-		fmt.Printf("🔍 Fetching tasks assigned to %s...\n", ownerEmail)
+		fmt.Printf("🔍 Fetching tasks in board %s...\n", boardID)
 		fmt.Println("=" + strings.Repeat("=", 50))
 
-		// Get board info first
 		boardService := monday.NewBoardService(client)
 		board, err := boardService.GetBoardByID(boardID)
 		if err != nil {
@@ -166,27 +159,22 @@ func (c *CLI) HandleTasksCommand() {
 		fmt.Printf("📋 Board: %s (ID: %s)\n", board.Name, board.ID)
 		fmt.Println("-" + strings.Repeat("-", len(board.Name)+20))
 
-		// Get items from the board using configured owner email
-		items, err := client.GetBoardItemsByOwner(boardID, ownerEmail)
+		items, err := client.GetBoardItems(boardID)
 		if err != nil {
 			fmt.Printf("❌ Error getting tasks: %v\n", err)
 			os.Exit(1)
 		}
 
 		if len(items) == 0 {
-			fmt.Printf("👤 No tasks assigned to %s in %s\n", ownerEmail, board.Name)
+			fmt.Printf("👤 No tasks in %s\n", board.Name)
 			return
 		}
 
-		itemsMap := make(map[string]monday.Item)
-		for _, item := range items {
-			itemsMap[item.ID] = item
-		}
-
 		dataStore := monday.NewDataStore()
-		dataStore.ClearCache(boardID, ownerEmail)
-		dataStore.StoreTaskRequest(boardID, ownerEmail, itemsMap)
-		c.PrintItems(itemsMap, items)
+		dataStore.ClearCache(boardID)
+		dataStore.StoreTasksRequest(boardID, items)
+		cacheItems, _, _ := dataStore.GetCachedTasks(boardID)
+		c.PrintItems(cacheItems)
 		return
 	default:
 		c.HelpTasksCommand()
@@ -212,19 +200,19 @@ func (c *CLI) HandleTaskCommand() {
 			fmt.Println("Usage: monday-cli task show <task-index>")
 			return
 		}
-		taskIndex, err := strconv.Atoi(c.command.Args[1])
+		localId, err := strconv.Atoi(c.command.Args[1])
 		if err != nil {
-			fmt.Printf("❌ Invalid task index: %v\n", err)
+			fmt.Printf("❌ Invalid task local ID: %v\n", err)
 			os.Exit(1)
 		}
 		dataStore := monday.NewDataStore()
-		task, timestamp, ok := dataStore.GetCachedTaskByIndex(c.config.GetBoardID(), c.config.GetUserEmail(), taskIndex)
+		task, timestamp, ok := dataStore.GetCachedTaskByLocalId(c.config.GetBoardID(), localId)
 		if !ok {
-			fmt.Printf("❌ Task %d not found\n", taskIndex)
+			fmt.Printf("❌ Task %d not found\n", localId)
 			os.Exit(1)
 		}
 		fmt.Println("Task cached at: " + timestamp.Format(time.RFC3339))
-		PrintTask(fmt.Sprintf("%d", taskIndex), task)
+		PrintTask(task)
 		return
 	case "create", "c":
 		if len(c.command.Args) < 2 {
@@ -278,13 +266,13 @@ func (c *CLI) HandleTaskCommand() {
 		}
 
 		client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
-		task, err := client.CreateTask(c.config.GetBoardID(), c.config.GetUserInfo().ID, taskName, status, priority, taskType)
+		localId, task, err := client.CreateTask(c.config.GetBoardID(), c.config.GetUserInfo().ID, taskName, status, priority, taskType)
 		if err != nil {
 			fmt.Printf("❌ Error creating task: %v\n", err)
 			return
 		}
-		fmt.Printf("✅ Task %s created\n", task.Name)
-		PrintTask(task.ID, *task)
+		fmt.Printf("✅ Task %s created with ID %d\n", task.Name, localId)
+		PrintTask(*task)
 		return
 	case "edit", "e":
 		if len(c.command.Args) < 2 {
@@ -336,7 +324,7 @@ func (c *CLI) HandleTaskCommand() {
 		}
 
 		dataStore := monday.NewDataStore()
-		task, _, ok := dataStore.GetCachedTaskByIndex(c.config.GetBoardID(), c.config.GetUserEmail(), taskIndex)
+		task, _, ok := dataStore.GetCachedTaskByLocalId(c.config.GetBoardID(), taskIndex)
 		if !ok {
 			fmt.Printf("❌ Task %d not found\n", taskIndex)
 			os.Exit(1)
@@ -359,8 +347,9 @@ func (c *CLI) HandleTaskCommand() {
 			fmt.Printf("❌ Error updating task: %v\n", err)
 			os.Exit(1)
 		}
-		dataStore.UpdateCachedTaskByIndex(c.config.GetBoardID(), c.config.GetUserEmail(), taskIndex, *updatedTask)
+		dataStore.UpdateCachedTaskByLocalId(c.config.GetBoardID(), taskIndex, *updatedTask)
 		fmt.Printf("✅ Task %d updated successfully\n", taskIndex)
+		PrintTask(*updatedTask)
 		return
 	default:
 		c.HelpTaskCommand()

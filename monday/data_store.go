@@ -10,9 +10,9 @@ import (
 
 // TaskCache represents a cached task request
 type TaskCache struct {
-	Tasks     map[string]Item
-	IndexMap  map[int]string // Maps local index to task ID
-	Timestamp time.Time
+	Tasks      map[string]Task
+	LocalIdMap map[int]string // Maps local index to task ID
+	Timestamp  time.Time
 }
 
 // DataStore manages caching of task requests
@@ -32,93 +32,112 @@ func NewDataStore() *DataStore {
 	return ds
 }
 
-// StoreTaskRequest caches a task request result
-func (ds *DataStore) StoreTaskRequest(boardID, ownerEmail string, tasks map[string]Item) {
-	key := boardID + ownerEmail
-
-	// Create index mapping (1-based indices for user-friendly display)
-	indexMap := make(map[int]string)
-	index := 1
-	for taskID := range tasks {
-		indexMap[index] = taskID
-		index++
+// StoreTasksRequest caches a task request result
+func (ds *DataStore) StoreTasksRequest(boardID string, tasks []Task) {
+	localIdMap := make(map[int]string)
+	tasksMap := make(map[string]Task)
+	localId := 1
+	for _, task := range tasks {
+		tasksMap[task.ID] = task
+		localIdMap[localId] = task.ID
+		task.localId = localId
+		localId++
 	}
 
-	ds.cache[key] = TaskCache{
-		Tasks:     tasks,
-		IndexMap:  indexMap,
-		Timestamp: time.Now(),
+	ds.cache[boardID] = TaskCache{
+		Tasks:      tasksMap,
+		LocalIdMap: localIdMap,
+		Timestamp:  time.Now(),
 	}
 
-	// Save cache to disk after update
 	if err := ds.Save(); err != nil {
 		fmt.Printf("Failed to save cache: %v\n", err)
 	}
 }
 
+// StoreTaskRequest caches a task request result
+func (ds *DataStore) StoreTaskRequest(boardID string, task Task) (int, error) {
+	if _, exists := ds.cache[boardID]; !exists {
+		ds.cache[boardID] = TaskCache{
+			Tasks:      make(map[string]Task),
+			LocalIdMap: make(map[int]string),
+			Timestamp:  time.Now(),
+		}
+	}
+	ds.cache[boardID].Tasks[task.ID] = task
+	localId, err := ds.GetTaskLocalIdByID(boardID, task.ID)
+	if err != nil {
+		fmt.Printf("Failed to get task local ID: %v\n", err)
+		localId = len(ds.cache[boardID].LocalIdMap) + 1
+	}
+	task.localId = localId
+	ds.cache[boardID].LocalIdMap[localId] = task.ID
+
+	// Save cache to disk after update
+	if err := ds.Save(); err != nil {
+		fmt.Printf("Failed to save cache: %v\n", err)
+		return 0, fmt.Errorf("failed to save cache: %v", err)
+	}
+	return localId, nil
+}
+
 // GetCachedTasks retrieves cached tasks if available
-func (ds *DataStore) GetCachedTasks(boardID, ownerEmail string) (map[string]Item, time.Time, bool) {
+func (ds *DataStore) GetCachedTasks(boardID string) (map[string]Task, time.Time, bool) {
 	if err := ds.Load(); err != nil {
-		return make(map[string]Item), time.Time{}, false
+		return make(map[string]Task), time.Time{}, false
 	}
 
-	key := boardID + ownerEmail
-	if cached, exists := ds.cache[key]; exists {
+	if cached, exists := ds.cache[boardID]; exists {
 		return cached.Tasks, cached.Timestamp, true
 	}
 	return nil, time.Time{}, false
 }
 
-func (ds *DataStore) GetCachedTask(boardID, ownerEmail string, taskID string) (Item, time.Time, bool) {
+func (ds *DataStore) GetCachedTask(boardID string, taskID string) (Task, time.Time, bool) {
 	if err := ds.Load(); err != nil {
-		return Item{}, time.Time{}, false
+		return Task{}, time.Time{}, false
 	}
-	key := boardID + ownerEmail
-	if cached, exists := ds.cache[key]; exists {
+	if cached, exists := ds.cache[boardID]; exists {
 		return cached.Tasks[taskID], cached.Timestamp, true
 	}
-	return Item{}, time.Time{}, false
+	return Task{}, time.Time{}, false
 }
 
 // GetCachedTaskByIndex retrieves a task by local index
-func (ds *DataStore) GetCachedTaskByIndex(boardID, ownerEmail string, index int) (Item, time.Time, bool) {
+func (ds *DataStore) GetCachedTaskByLocalId(boardID string, localId int) (Task, time.Time, bool) {
 	if err := ds.Load(); err != nil {
-		return Item{}, time.Time{}, false
+		return Task{}, time.Time{}, false
 	}
-	key := boardID + ownerEmail
-	if cached, exists := ds.cache[key]; exists {
-		if taskID, exists := cached.IndexMap[index]; exists {
+	if cached, exists := ds.cache[boardID]; exists {
+		if taskID, exists := cached.LocalIdMap[localId]; exists {
 			return cached.Tasks[taskID], cached.Timestamp, true
 		}
 	}
-	return Item{}, time.Time{}, false
+	return Task{}, time.Time{}, false
 }
 
 // GetIndexMap retrieves the index mapping for a board/owner combination
-func (ds *DataStore) GetIndexMap(boardID, ownerEmail string) (map[int]string, bool) {
+func (ds *DataStore) GetLocalIdMap(boardID string) (map[int]string, error) {
 	if err := ds.Load(); err != nil {
-		return nil, false
+		return nil, fmt.Errorf("failed to load cache: %w", err)
 	}
-	key := boardID + ownerEmail
-	if cached, exists := ds.cache[key]; exists {
-		return cached.IndexMap, true
+	if cached, exists := ds.cache[boardID]; exists {
+		return cached.LocalIdMap, nil
 	}
-	return nil, false
+	return nil, fmt.Errorf("board %s not found", boardID)
 }
 
-func (ds *DataStore) UpdateCachedTask(boardID, ownerEmail string, taskID string, task Item) {
-	key := boardID + ownerEmail
-	ds.cache[key].Tasks[taskID] = task
+func (ds *DataStore) UpdateCachedTask(boardID string, taskID string, task Task) {
+	ds.cache[boardID].Tasks[taskID] = task
 	if err := ds.Save(); err != nil {
 		fmt.Printf("Failed to update cached task: %v\n", err)
 	}
 }
 
 // UpdateCachedTaskByIndex updates a task by local index
-func (ds *DataStore) UpdateCachedTaskByIndex(boardID, ownerEmail string, index int, task Item) {
-	key := boardID + ownerEmail
-	if cached, exists := ds.cache[key]; exists {
-		if taskID, exists := cached.IndexMap[index]; exists {
+func (ds *DataStore) UpdateCachedTaskByLocalId(boardID string, localId int, task Task) {
+	if cached, exists := ds.cache[boardID]; exists {
+		if taskID, exists := cached.LocalIdMap[localId]; exists {
 			cached.Tasks[taskID] = task
 			if err := ds.Save(); err != nil {
 				fmt.Printf("Failed to update cached task: %v\n", err)
@@ -128,9 +147,8 @@ func (ds *DataStore) UpdateCachedTaskByIndex(boardID, ownerEmail string, index i
 }
 
 // ClearCache removes all cached entries
-func (ds *DataStore) ClearCache(boardID, ownerEmail string) {
-	key := boardID + ownerEmail
-	delete(ds.cache, key)
+func (ds *DataStore) ClearCache(boardID string) {
+	delete(ds.cache, boardID)
 
 	// Save cache to disk after update
 	if err := ds.Save(); err != nil {
@@ -192,4 +210,17 @@ func (ds *DataStore) Load() error {
 	}
 
 	return nil
+}
+
+func (ds *DataStore) GetTaskLocalIdByID(boardID string, taskID string) (int, error) {
+	if cached, exists := ds.cache[boardID]; exists {
+		for localId, id := range cached.LocalIdMap {
+			if id == taskID {
+				return localId, nil
+			}
+		}
+		ds.cache[boardID].LocalIdMap[len(cached.LocalIdMap)+1] = taskID
+		return len(cached.LocalIdMap) + 1, nil
+	}
+	return -1, fmt.Errorf("board %s not found", boardID)
 }

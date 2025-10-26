@@ -7,18 +7,34 @@ import (
 	"path/filepath"
 )
 
+type Filters struct {
+	UserNameWhitelist  []string `json:"user_name_whitelist"`
+	UserNameBlacklist  []string `json:"user_name_blacklist"`
+	UserEmailWhitelist []string `json:"user_email_whitelist"`
+	UserEmailBlacklist []string `json:"user_email_blacklist"`
+	StatusWhitelist    []string `json:"status_whitelist"`
+	StatusBlacklist    []string `json:"status_blacklist"`
+	PriorityWhitelist  []string `json:"priority_whitelist"`
+	PriorityBlacklist  []string `json:"priority_blacklist"`
+	TypeWhitelist      []string `json:"type_whitelist"`
+	TypeBlacklist      []string `json:"type_blacklist"`
+	SprintWhitelist    []string `json:"sprint_whitelist"`
+	SprintBlacklist    []string `json:"sprint_blacklist"`
+}
+
 // Config represents Monday.com configuration
 type Config struct {
-	APIKey     string `json:"api_key"`
-	BaseURL    string `json:"base_url"`
-	Timeout    int    `json:"timeout_seconds"`
-	OwnerEmail string `json:"owner_email"`
-	BoardID    string `json:"board_id"`
-	SprintID   string `json:"sprint_id"`
-	UserID     string `json:"user_id"`
-	UserName   string `json:"user_name"`
-	UserEmail  string `json:"user_email"`
-	UserTitle  string `json:"user_title"`
+	APIKey     string  `json:"api_key"`
+	BaseURL    string  `json:"base_url"`
+	Timeout    int     `json:"timeout_seconds"`
+	OwnerEmail string  `json:"owner_email"`
+	BoardID    string  `json:"board_id"`
+	SprintID   string  `json:"sprint_id"`
+	UserID     string  `json:"user_id"`
+	UserName   string  `json:"user_name"`
+	UserEmail  string  `json:"user_email"`
+	UserTitle  string  `json:"user_title"`
+	Filters    Filters `json:"filters"`
 }
 
 // DefaultConfig returns the default configuration
@@ -29,6 +45,20 @@ func DefaultConfig() *Config {
 		OwnerEmail: "",
 		BoardID:    "",
 		SprintID:   "",
+		Filters: Filters{
+			UserNameWhitelist:  []string{},
+			UserNameBlacklist:  []string{},
+			UserEmailWhitelist: []string{},
+			UserEmailBlacklist: []string{},
+			StatusWhitelist:    []string{},
+			StatusBlacklist:    []string{},
+			PriorityWhitelist:  []string{},
+			PriorityBlacklist:  []string{},
+			TypeWhitelist:      []string{},
+			TypeBlacklist:      []string{},
+			SprintWhitelist:    []string{},
+			SprintBlacklist:    []string{},
+		},
 	}
 }
 
@@ -134,6 +164,106 @@ func (c *Config) GetSprintID() string {
 	return c.SprintID
 }
 
+func (c *Config) AddStatusWhitelist(status string) {
+	c.Filters.StatusWhitelist = append(c.Filters.StatusWhitelist, status)
+}
+
+func (c *Config) RemoveStatusWhitelist(status string) {
+	c.Filters.StatusWhitelist = removeFromSlice(c.Filters.StatusWhitelist, status)
+}
+
+func (c *Config) AddStatusBlacklist(status string) {
+	c.Filters.StatusBlacklist = append(c.Filters.StatusBlacklist, status)
+}
+
+func (c *Config) RemoveStatusBlacklist(status string) {
+	c.Filters.StatusBlacklist = removeFromSlice(c.Filters.StatusBlacklist, status)
+}
+
+func (c *Config) AddPriorityWhitelist(priority string) {
+	c.Filters.PriorityWhitelist = append(c.Filters.PriorityWhitelist, priority)
+}
+
+func (c *Config) RemovePriorityWhitelist(priority string) {
+	c.Filters.PriorityWhitelist = removeFromSlice(c.Filters.PriorityWhitelist, priority)
+}
+
+func (c *Config) AddPriorityBlacklist(priority string) {
+	c.Filters.PriorityBlacklist = append(c.Filters.PriorityBlacklist, priority)
+}
+
+func (c *Config) RemovePriorityBlacklist(priority string) {
+	c.Filters.PriorityBlacklist = removeFromSlice(c.Filters.PriorityBlacklist, priority)
+}
+
+func (c *Config) AddTypeWhitelist(taskType string) {
+	c.Filters.TypeWhitelist = append(c.Filters.TypeWhitelist, taskType)
+}
+
+func (c *Config) RemoveTypeWhitelist(taskType string) {
+	c.Filters.TypeWhitelist = removeFromSlice(c.Filters.TypeWhitelist, taskType)
+}
+
+func (c *Config) AddTypeBlacklist(taskType string) {
+	c.Filters.TypeBlacklist = append(c.Filters.TypeBlacklist, taskType)
+}
+
+func (c *Config) RemoveTypeBlacklist(taskType string) {
+	c.Filters.TypeBlacklist = removeFromSlice(c.Filters.TypeBlacklist, taskType)
+}
+
+func (c *Config) AddSprintWhitelist(sprint string) {
+	c.Filters.SprintWhitelist = append(c.Filters.SprintWhitelist, sprint)
+}
+
+func (c *Config) RemoveSprintWhitelist(sprint string) {
+	c.Filters.SprintWhitelist = removeFromSlice(c.Filters.SprintWhitelist, sprint)
+}
+
+func (c *Config) AddSprintBlacklist(sprint string) {
+	c.Filters.SprintBlacklist = append(c.Filters.SprintBlacklist, sprint)
+}
+
+func (c *Config) RemoveSprintBlacklist(sprint string) {
+	c.Filters.SprintBlacklist = removeFromSlice(c.Filters.SprintBlacklist, sprint)
+}
+
+func (c *Config) AddUserNameWhitelist(userName string) {
+	c.Filters.UserNameWhitelist = append(c.Filters.UserNameWhitelist, userName)
+}
+func (c *Config) RemoveUserNameWhitelist(userName string) {
+	c.Filters.UserNameWhitelist = removeFromSlice(c.Filters.UserNameWhitelist, userName)
+}
+
+func (c *Config) AddUserNameBlacklist(userName string) {
+	c.Filters.UserNameBlacklist = append(c.Filters.UserNameBlacklist, userName)
+}
+
+func (c *Config) RemoveUserNameBlacklist(userName string) {
+	c.Filters.UserNameBlacklist = removeFromSlice(c.Filters.UserNameBlacklist, userName)
+}
+
+func (c *Config) AddUserEmailWhitelist(userEmail string) {
+	c.Filters.UserEmailWhitelist = append(c.Filters.UserEmailWhitelist, userEmail)
+}
+
+func (c *Config) RemoveUserEmailWhitelist(userEmail string) {
+	c.Filters.UserEmailWhitelist = removeFromSlice(c.Filters.UserEmailWhitelist, userEmail)
+}
+
+func (c *Config) AddUserEmailBlacklist(userEmail string) {
+	c.Filters.UserEmailBlacklist = append(c.Filters.UserEmailBlacklist, userEmail)
+}
+
+func (c *Config) RemoveUserEmailBlacklist(userEmail string) {
+	c.Filters.UserEmailBlacklist = removeFromSlice(c.Filters.UserEmailBlacklist, userEmail)
+}
+
+// GetFilters returns the filters
+func (c *Config) GetFilters() Filters {
+	return c.Filters
+}
+
 // GetDefaultConfigPath returns the default configuration file path
 func GetDefaultConfigPath() string {
 	homeDir, err := os.UserHomeDir()
@@ -171,4 +301,13 @@ func (c *Config) HasUserInfo() bool {
 // GetUserEmail returns the user email
 func (c *Config) GetUserEmail() string {
 	return c.UserEmail
+}
+
+func removeFromSlice(slice []string, item string) []string {
+	for i, v := range slice {
+		if v == item {
+			return append(slice[:i], slice[i+1:]...)
+		}
+	}
+	return slice
 }
