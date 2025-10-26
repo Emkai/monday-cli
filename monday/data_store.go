@@ -13,6 +13,7 @@ type TaskCache struct {
 	Tasks      map[string]Task
 	LocalIdMap map[int]string // Maps local index to task ID
 	RawItems   map[string]Item
+	Users      map[string]User // Maps user ID to User
 	Timestamp  time.Time
 }
 
@@ -39,6 +40,7 @@ func (ds *DataStore) StoreRawItems(boardID string, items []Item) {
 			Tasks:      make(map[string]Task),
 			LocalIdMap: make(map[int]string),
 			RawItems:   make(map[string]Item),
+			Users:      make(map[string]User),
 			Timestamp:  time.Now(),
 		}
 	}
@@ -48,6 +50,41 @@ func (ds *DataStore) StoreRawItems(boardID string, items []Item) {
 	if err := ds.Save(); err != nil {
 		fmt.Printf("Failed to save cache: %v\n", err)
 	}
+}
+
+// StoreBoardUsers stores board users in the cache
+func (ds *DataStore) StoreBoardUsers(boardID string, users []User) {
+	if _, exists := ds.cache[boardID]; !exists {
+		ds.cache[boardID] = TaskCache{
+			Tasks:      make(map[string]Task),
+			LocalIdMap: make(map[int]string),
+			RawItems:   make(map[string]Item),
+			Users:      make(map[string]User),
+			Timestamp:  time.Now(),
+		}
+	}
+	for _, user := range users {
+		ds.cache[boardID].Users[user.ID] = user
+	}
+	if err := ds.Save(); err != nil {
+		fmt.Printf("Failed to save cache: %v\n", err)
+	}
+}
+
+// GetCachedBoardUsers retrieves cached board users
+func (ds *DataStore) GetCachedBoardUsers(boardID string) ([]User, time.Time, bool) {
+	if err := ds.Load(); err != nil {
+		return []User{}, time.Time{}, false
+	}
+
+	if cached, exists := ds.cache[boardID]; exists {
+		var users []User
+		for _, user := range cached.Users {
+			users = append(users, user)
+		}
+		return users, cached.Timestamp, true
+	}
+	return []User{}, time.Time{}, false
 }
 
 // StoreTasksRequest caches a task request result
@@ -70,6 +107,7 @@ func (ds *DataStore) StoreTasksRequest(boardID string, tasks []Task, rawItems []
 		Tasks:      tasksMap,
 		LocalIdMap: localIdMap,
 		RawItems:   rawItemsMap,
+		Users:      make(map[string]User),
 		Timestamp:  time.Now(),
 	}
 

@@ -249,6 +249,118 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, []Item, error) {
 	return allTasks, allItems, nil
 }
 
+// GetBoardUsers retrieves all users who are assigned to tasks on a specific board
+func (c *Client) GetBoardUsers(boardID string) ([]User, error) {
+	query := `
+		query GetBoardUsers($boardId: ID!) {
+			boards(ids: [$boardId]) {
+				items_page(limit: 100) {
+					items {
+						id
+						name
+						column_values {
+							id
+							text
+							value
+						}
+					}
+				}
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"boardId": boardID,
+	}
+
+	resp, err := c.ExecuteQuery(query, variables)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Boards []struct {
+			ItemsPage struct {
+				Items []struct {
+					ID           string        `json:"id"`
+					Name         string        `json:"name"`
+					ColumnValues []ColumnValue `json:"column_values"`
+				} `json:"items"`
+			} `json:"items_page"`
+		} `json:"boards"`
+	}
+
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal board users: %w", err)
+	}
+
+	if len(result.Boards) == 0 {
+		return nil, fmt.Errorf("board not found")
+	}
+
+	// Extract unique users from task assignments
+	userMap := make(map[string]User)
+
+	for _, item := range result.Boards[0].ItemsPage.Items {
+		for _, cv := range item.ColumnValues {
+			// Look for person columns (user assignments)
+			if strings.Contains(strings.ToLower(cv.ID), "person") ||
+				strings.Contains(strings.ToLower(cv.ID), "user") ||
+				strings.Contains(strings.ToLower(cv.ID), "owner") ||
+				strings.Contains(strings.ToLower(cv.ID), "assign") {
+
+				// Parse the value to extract user information
+				var personData struct {
+					PersonsAndTeams []struct {
+						ID   int    `json:"id"`
+						Kind string `json:"kind"`
+					} `json:"personsAndTeams"`
+				}
+
+				// First unmarshal the JSON string, then unmarshal the actual data
+				var jsonStr string
+				if err := json.Unmarshal(cv.Value, &jsonStr); err == nil {
+					if err := json.Unmarshal([]byte(jsonStr), &personData); err == nil {
+						// Split the text by comma to get individual user names
+						userNames := strings.Split(cv.Text, ",")
+						for i, person := range personData.PersonsAndTeams {
+							if person.Kind == "person" {
+								// Get the corresponding user name (trimmed of whitespace)
+								userName := ""
+								if i < len(userNames) {
+									userName = strings.TrimSpace(userNames[i])
+								} else {
+									// Fallback to the full text if we don't have enough names
+									userName = cv.Text
+								}
+
+								// Create a user entry - we'll need to fetch full details later
+								user := User{
+									ID:       fmt.Sprintf("%d", person.ID),
+									Name:     userName,
+									Email:    "", // We'll need to fetch this separately
+									Title:    "",
+									PhotoURL: "",
+									Enabled:  true,
+								}
+								userMap[user.ID] = user
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	var users []User
+	for _, user := range userMap {
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
 func OrderTasks(tasks []Task) []Task {
 	sort.Slice(tasks, func(i, j int) bool {
 		statusI := getSortableStatus(tasks[i])

@@ -213,11 +213,25 @@ func (c *CLI) HandleTasksCommand() {
 			return
 		}
 
+		// Fetch board users
+		fmt.Printf("👥 Fetching board users...\n")
+		users, err := client.GetBoardUsers(boardID)
+		if err != nil {
+			fmt.Printf("⚠️  Warning: Could not fetch board users: %v\n", err)
+			users = []monday.User{} // Continue without users
+		} else {
+			fmt.Printf("👥 Found %d users on board\n", len(users))
+		}
+
 		dataStore := monday.NewDataStore()
 		dataStore.ClearCache(boardID)
 		dataStore.StoreTasksRequest(boardID, items, rawItems)
+		dataStore.StoreBoardUsers(boardID, users)
 		cacheItems, _, _ := dataStore.GetCachedTasks(boardID)
 		c.PrintItems(cacheItems)
+		return
+	case "users", "u":
+		c.HandleListBoardUsersCommand()
 		return
 	default:
 		c.HelpTasksCommand()
@@ -229,6 +243,7 @@ func (c *CLI) HelpTasksCommand() {
 	fmt.Println("Tasks Commands:")
 	fmt.Println("  tasks list (ls)      Show your assigned tasks")
 	fmt.Println("  tasks fetch (f)      Fetch your assigned tasks")
+	fmt.Println("  tasks users (u)      Show board users")
 }
 
 func (c *CLI) HandleTaskCommand() {
@@ -712,4 +727,38 @@ func (c *CLI) HandleRemoveMeCommand() {
 
 	c.config.Save(monday.GetConfigPath())
 	fmt.Println("✅ Removed current user from whitelist")
+}
+
+func (c *CLI) HandleListBoardUsersCommand() {
+	dataStore := monday.NewDataStore()
+	users, timestamp, ok := dataStore.GetCachedBoardUsers(c.config.GetBoardID())
+
+	if !ok || len(users) == 0 {
+		fmt.Println("❌ No board users found in cache")
+		fmt.Println("💡 Run 'tasks fetch' first to fetch board users")
+		return
+	}
+
+	fmt.Printf("👥 Board Users (cached at: %s)\n", timestamp.Format(time.RFC3339))
+	fmt.Println("=" + strings.Repeat("=", 50))
+
+	for i, user := range users {
+		status := "❌ Disabled"
+		if user.Enabled {
+			status = "✅ Enabled"
+		}
+
+		fmt.Printf("%d. %s (%s)\n", i+1, user.Name, user.Email)
+		fmt.Printf("   🆔 ID: %s\n", user.ID)
+		if user.Title != "" {
+			fmt.Printf("   💼 Title: %s\n", user.Title)
+		}
+		fmt.Printf("   🔐 Status: %s\n", status)
+		if user.PhotoURL != "" {
+			fmt.Printf("   🖼️  Photo: %s\n", user.PhotoURL)
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("📊 Total users: %d\n", len(users))
 }
