@@ -26,27 +26,29 @@ type Filters struct {
 
 // Config represents Monday.com configuration
 type Config struct {
-	APIKey     string  `json:"api_key"`
-	BaseURL    string  `json:"base_url"`
-	Timeout    int     `json:"timeout_seconds"`
-	OwnerEmail string  `json:"owner_email"`
-	BoardID    string  `json:"board_id"`
-	SprintID   string  `json:"sprint_id"`
-	UserID     string  `json:"user_id"`
-	UserName   string  `json:"user_name"`
-	UserEmail  string  `json:"user_email"`
-	UserTitle  string  `json:"user_title"`
-	Filters    Filters `json:"filters"`
+	APIKey        string  `json:"api_key"`
+	BaseURL       string  `json:"base_url"`
+	Timeout       int     `json:"timeout_seconds"`
+	OwnerEmail    string  `json:"owner_email"`
+	BoardID       string  `json:"board_id"`
+	SprintID      string  `json:"sprint_id"`
+	SprintBoardId string  `json:"sprint_board_id"`
+	UserID        string  `json:"user_id"`
+	UserName      string  `json:"user_name"`
+	UserEmail     string  `json:"user_email"`
+	UserTitle     string  `json:"user_title"`
+	Filters       Filters `json:"filters"`
 }
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		BaseURL:    "https://api.monday.com/v2",
-		Timeout:    30,
-		OwnerEmail: "",
-		BoardID:    "",
-		SprintID:   "",
+		BaseURL:       "https://api.monday.com/v2",
+		Timeout:       30,
+		OwnerEmail:    "",
+		BoardID:       "",
+		SprintID:      "",
+		SprintBoardId: "",
 		Filters: Filters{
 			UserNameWhitelist:  []string{},
 			UserNameBlacklist:  []string{},
@@ -164,6 +166,16 @@ func (c *Config) SetSprintID(sprintID string) {
 // GetSprintID returns the sprint ID
 func (c *Config) GetSprintID() string {
 	return c.SprintID
+}
+
+// SetSprintBoardID sets the sprint board ID in the configuration
+func (c *Config) SetSprintBoardID(sprintBoardID string) {
+	c.SprintBoardId = sprintBoardID
+}
+
+// GetSprintBoardID returns the sprint board ID
+func (c *Config) GetSprintBoardID() string {
+	return c.SprintBoardId
 }
 
 func (c *Config) AddStatusWhitelist(status string) {

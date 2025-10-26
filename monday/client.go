@@ -260,8 +260,7 @@ func (c *Client) GetBoardItems(boardID string) ([]Task, []Item, error) {
 				strings.Contains(columnText, "cycle") ||
 				strings.Contains(columnText, "release") ||
 				strings.Contains(columnText, "milestone") ||
-				strings.Contains(columnText, "phase") ||
-				strings.Contains(columnText, "26")) &&
+				strings.Contains(columnText, "phase")) &&
 				cv.Text != "" {
 				task.Sprint = Sprint(cv.Text)
 				fmt.Printf("🔍 Task '%s' assigned to sprint: %s (column: %s)\n", task.Name, cv.Text, cv.ID)
@@ -430,90 +429,291 @@ func (c *Client) GetBoardUsers(boardID string) ([]User, error) {
 
 // GetBoardSprints retrieves all sprints from a specific board
 func (c *Client) GetBoardSprints(boardID string) ([]Sprint, error) {
-	query := `
-		query GetBoardSprints($boardId: ID!) {
-			boards(ids: [$boardId]) {
-				items_page {
-					items {
-						column_values {
+	// Use pagination to fetch all items from the sprint board
+	limit := 25
+	cursor := ""
+	var allItems []Item
+
+	for {
+		query := `
+			query GetSprintBoardItems($boardId: ID!, $limit: Int!, $cursor: String) {
+				boards(ids: [$boardId]) {
+					items_page(limit: $limit, cursor: $cursor) {
+						items {
 							id
-							text
-							value
+							name
+							column_values {
+								id
+								text
+								value
+							}
+							updated_at
 						}
+						cursor
 					}
+				}
+			}
+		`
+
+		variables := map[string]interface{}{
+			"boardId": boardID,
+			"limit":   limit,
+		}
+		if cursor != "" {
+			variables["cursor"] = cursor
+		}
+
+		resp, err := c.ExecuteQuery(query, variables)
+		if err != nil {
+			return nil, err
+		}
+
+		var result struct {
+			Boards []struct {
+				ItemsPage struct {
+					Items  []Item `json:"items"`
+					Cursor string `json:"cursor"`
+				} `json:"items_page"`
+			} `json:"boards"`
+		}
+
+		if err := json.Unmarshal(resp.Data, &result); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal sprint board items: %w", err)
+		}
+
+		if len(result.Boards) == 0 {
+			return nil, fmt.Errorf("sprint board not found")
+		}
+
+		allItems = append(allItems, result.Boards[0].ItemsPage.Items...)
+		cursor = result.Boards[0].ItemsPage.Cursor
+
+		if cursor == "" || len(result.Boards[0].ItemsPage.Items) < limit {
+			break
+		}
+		fmt.Printf("Fetching next page... currently %d sprint items\n", len(allItems))
+	}
+
+	fmt.Printf("🔍 Found %d total items in sprint board\n", len(allItems))
+
+	// Extract unique sprints from all items
+	sprintSet := make(map[string]bool)
+	var sprints []Sprint
+
+	for _, item := range allItems {
+		// Look for sprint name in the item name or column values
+		sprintName := ""
+
+		// First, try to use the item name as sprint name
+		if item.Name != "" {
+			sprintName = strings.TrimSpace(item.Name)
+		}
+
+		// If no name, look in column values for sprint-related data
+		if sprintName == "" {
+			for _, cv := range item.ColumnValues {
+				columnID := strings.ToLower(cv.ID)
+				columnText := strings.ToLower(cv.Text)
+
+				// Look for sprint-related patterns in column values
+				if (strings.Contains(columnID, "sprint") ||
+					strings.Contains(columnID, "name") ||
+					strings.Contains(columnID, "title") ||
+					strings.Contains(columnText, "sprint")) &&
+					cv.Text != "" {
+					sprintName = strings.TrimSpace(cv.Text)
+					break
+				}
+			}
+		}
+
+		// Add sprint if we found a valid name
+		if sprintName != "" && !sprintSet[sprintName] {
+			sprintSet[sprintName] = true
+			sprints = append(sprints, Sprint(sprintName))
+			fmt.Printf("🔍 Found sprint: %s (ID: %s)\n", sprintName, item.ID)
+		}
+	}
+
+	return sprints, nil
+}
+
+// GetSprintItems retrieves items from a specific sprint with pagination
+func (c *Client) GetSprintItems(sprintID string) ([]Task, []Item, error) {
+	// First, get the sprint info to know the sprint name
+	sprintQuery := `
+		query GetSprintInfo($sprintId: ID!) {
+			sprints(ids: [$sprintId]) {
+				id
+				name
+			}
+		}
+	`
+
+	sprintResp, err := c.ExecuteQuery(sprintQuery, map[string]interface{}{
+		"sprintId": sprintID,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var sprintResult struct {
+		Sprints []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"sprints"`
+	}
+
+	if err := json.Unmarshal(sprintResp.Data, &sprintResult); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal sprint info: %w", err)
+	}
+
+	if len(sprintResult.Sprints) == 0 {
+		return nil, nil, fmt.Errorf("sprint not found")
+	}
+
+	sprint := sprintResult.Sprints[0]
+	fmt.Printf("🔍 Found sprint: %s (ID: %s)\n", sprint.Name, sprint.ID)
+
+	// Get the board ID from config to fetch items
+	// For now, we'll use a simple approach and fetch all items from the sprint
+	// The Monday.com API doesn't support pagination on sprint items directly
+	query := `
+		query GetSprintItems($sprintId: ID!) {
+			sprints(ids: [$sprintId]) {
+				id
+				name
+				items {
+					id
+					name
+					column_values {
+						id
+						text
+						value
+					}
+					updated_at
 				}
 			}
 		}
 	`
 
 	variables := map[string]interface{}{
-		"boardId": boardID,
+		"sprintId": sprintID,
 	}
 
 	resp, err := c.ExecuteQuery(query, variables)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var result struct {
-		Boards []struct {
-			ItemsPage struct {
-				Items []struct {
-					ColumnValues []ColumnValue `json:"column_values"`
-				} `json:"items"`
-			} `json:"items_page"`
-		} `json:"boards"`
+		Sprints []struct {
+			ID    string `json:"id"`
+			Name  string `json:"name"`
+			Items []struct {
+				ID           string        `json:"id"`
+				Name         string        `json:"name"`
+				ColumnValues []ColumnValue `json:"column_values"`
+				UpdatedAt    time.Time     `json:"updated_at"`
+			} `json:"items"`
+		} `json:"sprints"`
 	}
 
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal board sprints: %w", err)
+		return nil, nil, fmt.Errorf("failed to unmarshal sprint items: %w", err)
 	}
 
-	if len(result.Boards) == 0 {
-		return nil, fmt.Errorf("board not found")
+	if len(result.Sprints) == 0 {
+		return nil, nil, fmt.Errorf("sprint not found")
 	}
 
-	// Extract unique sprints from all items
-	sprintSet := make(map[string]bool)
-	var sprints []Sprint
+	allItems := result.Sprints[0].Items
+	fmt.Printf("🔍 Found %d total items in sprint\n", len(allItems))
 
-	// Debug: Print all column IDs to see what we have
-	fmt.Printf("🔍 Debug: Found %d items, checking for sprint columns...\n", len(result.Boards[0].ItemsPage.Items))
+	// Convert sprint items to tasks and items
+	var allTasks []Task
+	var allItemsConverted []Item
+	localId := 1
 
-	for i, item := range result.Boards[0].ItemsPage.Items {
-		if i < 3 { // Only debug first 3 items
-			fmt.Printf("Item %d: %s\n", i+1, "Task") // We don't have name in this struct
-			for j, cv := range item.ColumnValues {
-				if j < 10 { // Only show first 10 columns
-					fmt.Printf("  Column %d: ID=%s, Text='%s'\n", j+1, cv.ID, cv.Text)
-				}
-			}
+	for _, item := range allItems {
+		// Create task
+		task := Task{
+			ID:        item.ID,
+			LocalId:   localId,
+			Name:      item.Name,
+			Sprint:    Sprint(sprint.Name), // Set sprint name from the sprint data
+			UpdatedAt: item.UpdatedAt,
 		}
+		localId++
 
+		// Parse column values for task properties
 		for _, cv := range item.ColumnValues {
-			// Look for sprint columns with more flexible matching
-			columnID := strings.ToLower(cv.ID)
-			columnText := strings.ToLower(cv.Text)
+			if strings.Contains(strings.ToLower(cv.ID), "status") && cv.Text != "" {
+				task.Status = Status(cv.Text)
+			}
+			if strings.Contains(strings.ToLower(cv.ID), "priority") && cv.Text != "" {
+				task.Priority = Priority(cv.Text)
+			}
+			if strings.Contains(strings.ToLower(cv.ID), "type") && cv.Text != "" {
+				task.Type = Type(cv.Text)
+			}
+			// Handle user assignments from task_owner column
+			if strings.Contains(strings.ToLower(cv.ID), "person") ||
+				strings.Contains(strings.ToLower(cv.ID), "user") ||
+				strings.Contains(strings.ToLower(cv.ID), "owner") ||
+				strings.Contains(strings.ToLower(cv.ID), "assign") {
 
-			// Check for sprint-related patterns
-			if (strings.Contains(columnID, "sprint") ||
-				strings.Contains(columnID, "iteration") ||
-				strings.Contains(columnID, "cycle") ||
-				strings.Contains(columnText, "sprint") ||
-				strings.Contains(columnText, "iteration")) &&
-				cv.Text != "" {
+				// Parse the user assignment data
+				var personData struct {
+					PersonsAndTeams []struct {
+						ID   int    `json:"id"`
+						Kind string `json:"kind"`
+					} `json:"personsAndTeams"`
+				}
 
-				sprintName := strings.TrimSpace(cv.Text)
-				if sprintName != "" && !sprintSet[sprintName] {
-					sprintSet[sprintName] = true
-					sprints = append(sprints, Sprint(sprintName))
-					fmt.Printf("🔍 Found sprint: %s (from column %s)\n", sprintName, cv.ID)
+				// First unmarshal the JSON string, then unmarshal the actual data
+				var jsonStr string
+				if err := json.Unmarshal(cv.Value, &jsonStr); err == nil {
+					if err := json.Unmarshal([]byte(jsonStr), &personData); err == nil {
+						// Extract unique user names from the text representation
+						userNames := strings.Split(cv.Text, ",")
+						seenUsers := make(map[string]bool)
+						var taskUserNames []string
+						var taskUserEmails []string
+
+						// Process each name in the text (this handles the actual user assignments)
+						for _, name := range userNames {
+							trimmedName := strings.TrimSpace(name)
+							if trimmedName != "" && !seenUsers[trimmedName] {
+								seenUsers[trimmedName] = true
+								taskUserNames = append(taskUserNames, trimmedName)
+								taskUserEmails = append(taskUserEmails, trimmedName)
+							}
+						}
+
+						// Join multiple users with comma
+						if len(taskUserNames) > 0 {
+							task.UserName = strings.Join(taskUserNames, ", ")
+							task.UserEmail = strings.Join(taskUserEmails, ", ")
+						}
+					}
 				}
 			}
 		}
+
+		allTasks = append(allTasks, task)
+
+		// Create item
+		itemConverted := Item{
+			ID:           item.ID,
+			Name:         item.Name,
+			ColumnValues: item.ColumnValues,
+			UpdatedAt:    item.UpdatedAt,
+		}
+		allItemsConverted = append(allItemsConverted, itemConverted)
 	}
 
-	return sprints, nil
+	return allTasks, allItemsConverted, nil
 }
 
 func OrderTasks(tasks []Task) []Task {

@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"emkai/go-cli-gui/monday"
 	"fmt"
+	"monday-cli/monday"
 	"os"
 )
 
@@ -23,15 +23,19 @@ type CLI struct {
 }
 
 func NewCLI() *CLI {
+	fmt.Println("Loading config...")
 	config, err := monday.LoadConfig(monday.GetConfigPath())
 	if err != nil {
 		fmt.Println("Error loading config:", err)
 		return nil
 	}
+	fmt.Println("Config loaded successfully")
 	c := &CLI{
 		config: config,
 	}
+	fmt.Println("Reading command...")
 	c.ReadCommand()
+	fmt.Println("Command read successfully")
 	return c
 }
 

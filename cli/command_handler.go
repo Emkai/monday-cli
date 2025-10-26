@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"emkai/go-cli-gui/monday"
 	"fmt"
+	"monday-cli/monday"
 	"os"
 	"strconv"
 	"strings"
@@ -91,6 +91,14 @@ func (c *CLI) HandleConfigCommand() {
 		c.config.SetSprintID(c.command.Args[1])
 		c.config.Save(monday.GetConfigPath())
 		return
+	case "set-sprint-board-id", "sprint-board":
+		if len(c.command.Args) < 2 {
+			fmt.Println("Usage: monday-cli config set-sprint-board-id <sprint-board-id>")
+			return
+		}
+		c.config.SetSprintBoardID(c.command.Args[1])
+		c.config.Save(monday.GetConfigPath())
+		return
 	case "show", "s":
 		fmt.Println("API Key:", maskAPIKey(c.config.GetAPIKey()))
 		if c.config.HasUserInfo() {
@@ -106,6 +114,7 @@ func (c *CLI) HandleConfigCommand() {
 		}
 		fmt.Println("Board ID:", c.config.GetBoardID())
 		fmt.Println("Sprint ID:", c.config.GetSprintID())
+		fmt.Println("Sprint Board ID:", c.config.GetSprintBoardID())
 		return
 	case "add-filter", "addf":
 		c.HandleAddFilterCommand()
@@ -158,6 +167,7 @@ func (c *CLI) HelpConfigCommand() {
 	fmt.Println("  config set-api-key (key) <api-key>")
 	fmt.Println("  config set-board-id (board) <board-id>")
 	fmt.Println("  config set-sprint-id (sprint) <sprint-id>")
+	fmt.Println("  config set-sprint-board-id (sprint-board) <sprint-board-id>")
 	fmt.Println("  config show (s)")
 	fmt.Println("")
 	fmt.Println("Filter Commands:")
@@ -235,21 +245,30 @@ func (c *CLI) HandleTasksCommand() {
 			fmt.Printf("👥 Found %d users on board\n", len(users))
 		}
 
-		// Fetch board sprints
-		fmt.Printf("🏃 Fetching board sprints...\n")
-		sprints, err := client.GetBoardSprints(boardID)
-		if err != nil {
-			fmt.Printf("⚠️  Warning: Could not fetch board sprints: %v\n", err)
-			sprints = []monday.Sprint{} // Continue without sprints
+		// Fetch board sprints from sprint board
+		sprintBoardID := c.config.GetSprintBoardID()
+		var sprints []monday.Sprint
+		if sprintBoardID != "" {
+			fmt.Printf("🏃 Fetching sprints from sprint board...\n")
+			sprints, err = client.GetBoardSprints(sprintBoardID)
+			if err != nil {
+				fmt.Printf("⚠️  Warning: Could not fetch board sprints: %v\n", err)
+				sprints = []monday.Sprint{} // Continue without sprints
+			} else {
+				fmt.Printf("🏃 Found %d sprints on sprint board\n", len(sprints))
+			}
 		} else {
-			fmt.Printf("🏃 Found %d sprints on board\n", len(sprints))
+			fmt.Printf("⚠️  Warning: No sprint board ID configured, skipping sprint fetch\n")
+			sprints = []monday.Sprint{}
 		}
 
 		dataStore := monday.NewDataStore()
 		dataStore.ClearCache(boardID)
 		dataStore.StoreTasksRequest(boardID, items, rawItems)
 		dataStore.StoreBoardUsers(boardID, users)
-		dataStore.StoreBoardSprints(boardID, sprints)
+		if sprintBoardID != "" {
+			dataStore.StoreBoardSprints(sprintBoardID, sprints)
+		}
 		cacheItems, _, _ := dataStore.GetCachedTasks(boardID)
 		c.PrintItems(cacheItems)
 		return
@@ -258,6 +277,9 @@ func (c *CLI) HandleTasksCommand() {
 		return
 	case "sprints", "s":
 		c.HandleListBoardSprintsCommand()
+		return
+	case "sprint", "sp":
+		c.HandleSprintCommand()
 		return
 	default:
 		c.HelpTasksCommand()
@@ -271,6 +293,7 @@ func (c *CLI) HelpTasksCommand() {
 	fmt.Println("  tasks fetch (f)      Fetch your assigned tasks")
 	fmt.Println("  tasks users (u)      Show board users")
 	fmt.Println("  tasks sprints (s)    Show board sprints")
+	fmt.Println("  tasks sprint (sp)    Sprint-specific commands")
 }
 
 func (c *CLI) HandleTaskCommand() {
@@ -790,10 +813,17 @@ func (c *CLI) HandleListBoardUsersCommand() {
 	fmt.Printf("📊 Total users: %d\n", len(users))
 }
 
-// HandleListBoardSprintsCommand lists all sprints found on the board
+// HandleListBoardSprintsCommand lists all sprints found on the sprint board
 func (c *CLI) HandleListBoardSprintsCommand() {
+	sprintBoardID := c.config.GetSprintBoardID()
+	if sprintBoardID == "" {
+		fmt.Println("❌ No sprint board ID configured")
+		fmt.Println("💡 Run 'config set-sprint-board-id <sprint-board-id>' first")
+		return
+	}
+
 	dataStore := monday.NewDataStore()
-	sprints, timestamp, ok := dataStore.GetCachedBoardSprints(c.config.GetBoardID())
+	sprints, timestamp, ok := dataStore.GetCachedBoardSprints(sprintBoardID)
 
 	if !ok || len(sprints) == 0 {
 		fmt.Println("❌ No board sprints found in cache")
@@ -801,7 +831,7 @@ func (c *CLI) HandleListBoardSprintsCommand() {
 		return
 	}
 
-	fmt.Printf("🏃 Board Sprints (cached at: %s)\n", timestamp.Format(time.RFC3339))
+	fmt.Printf("🏃 Sprint Board Sprints (cached at: %s)\n", timestamp.Format(time.RFC3339))
 	fmt.Println("=" + strings.Repeat("=", 50))
 
 	for i, sprint := range sprints {
@@ -809,6 +839,103 @@ func (c *CLI) HandleListBoardSprintsCommand() {
 	}
 
 	fmt.Printf("📊 Total sprints: %d\n", len(sprints))
+}
+
+// HandleSprintCommand handles sprint-specific commands
+func (c *CLI) HandleSprintCommand() {
+	if len(c.command.Args) < 1 {
+		c.HelpSprintCommand()
+		return
+	}
+
+	subcommand := c.command.Args[1]
+	switch subcommand {
+	case "fetch", "f":
+		c.HandleSprintFetchCommand()
+		return
+	case "list", "ls":
+		c.HandleSprintListCommand()
+		return
+	default:
+		c.HelpSprintCommand()
+		return
+	}
+}
+
+// HandleSprintFetchCommand fetches items from the current sprint
+func (c *CLI) HandleSprintFetchCommand() {
+	sprintID := c.config.GetSprintID()
+	if sprintID == "" {
+		fmt.Println("❌ No sprint ID configured")
+		fmt.Println("💡 Run 'config set-sprint-id <sprint-id>' first")
+		return
+	}
+
+	client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
+
+	fmt.Printf("🔍 Fetching items from sprint %s...\n", sprintID)
+
+	tasks, items, err := client.GetSprintItems(sprintID)
+	if err != nil {
+		fmt.Printf("❌ Error fetching sprint items: %v\n", err)
+		return
+	}
+
+	if len(tasks) == 0 {
+		fmt.Printf("👤 No tasks found in sprint %s\n", sprintID)
+		return
+	}
+
+	// Store in sprint cache
+	dataStore := monday.NewDataStore()
+	dataStore.StoreSprintItems(sprintID, tasks, items)
+
+	// Convert slice to map for PrintItems
+	tasksMap := make(map[string]monday.Task)
+	for _, task := range tasks {
+		tasksMap[task.ID] = task
+	}
+
+	// Display the tasks
+	c.PrintItems(tasksMap)
+}
+
+// HandleSprintListCommand lists items from the current sprint
+func (c *CLI) HandleSprintListCommand() {
+	sprintID := c.config.GetSprintID()
+	if sprintID == "" {
+		fmt.Println("❌ No sprint ID configured")
+		fmt.Println("💡 Run 'config set-sprint-id <sprint-id>' first")
+		return
+	}
+
+	dataStore := monday.NewDataStore()
+	tasks, _, ok := dataStore.GetCachedSprintItems(sprintID)
+
+	if !ok || len(tasks) == 0 {
+		fmt.Println("❌ No sprint items found in cache")
+		fmt.Println("💡 Run 'tasks sprint fetch' first to fetch sprint items")
+		return
+	}
+
+	// Convert slice to map for PrintItems
+	tasksMap := make(map[string]monday.Task)
+	for _, task := range tasks {
+		tasksMap[task.ID] = task
+	}
+
+	c.PrintItems(tasksMap)
+}
+
+// HelpSprintCommand shows help for sprint commands
+func (c *CLI) HelpSprintCommand() {
+	fmt.Println("Sprint Commands:")
+	fmt.Println("  tasks sprint fetch (f)    Fetch items from current sprint")
+	fmt.Println("  tasks sprint list (ls)   List cached sprint items")
+	fmt.Println("")
+	fmt.Println("Configuration:")
+	fmt.Println("  config set-sprint-id <id>  Set the current sprint ID")
+	fmt.Println("  config show                Show current sprint ID")
 }
 
 // HandleFilterToSprintCommand filters to show only tasks from the current sprint

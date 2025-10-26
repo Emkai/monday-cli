@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"emkai/go-cli-gui/monday"
 	"fmt"
+	"monday-cli/monday"
 	"strconv"
 	"strings"
 )

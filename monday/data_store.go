@@ -20,17 +20,20 @@ type TaskCache struct {
 
 // DataStore manages caching of task requests
 type DataStore struct {
-	cache map[string]TaskCache
+	cache       map[string]TaskCache
+	sprintCache map[string]TaskCache
 }
 
 // NewDataStore creates a new DataStore instance
 func NewDataStore() *DataStore {
 	ds := &DataStore{
-		cache: make(map[string]TaskCache),
+		cache:       make(map[string]TaskCache),
+		sprintCache: make(map[string]TaskCache),
 	}
 	if err := ds.Load(); err != nil {
 		// Initialize empty cache if load fails
 		ds.cache = make(map[string]TaskCache)
+		ds.sprintCache = make(map[string]TaskCache)
 	}
 	return ds
 }
@@ -126,6 +129,58 @@ func (ds *DataStore) GetCachedBoardSprints(boardID string) ([]Sprint, time.Time,
 		return cached.Sprints, cached.Timestamp, true
 	}
 	return []Sprint{}, time.Time{}, false
+}
+
+// StoreSprintItems stores sprint items in the sprint cache
+func (ds *DataStore) StoreSprintItems(sprintID string, tasks []Task, items []Item) {
+	if err := ds.Load(); err != nil {
+		fmt.Printf("Failed to load cache: %v\n", err)
+		return
+	}
+
+	// Create task map and local ID map
+	tasksMap := make(map[string]Task)
+	localIdMap := make(map[int]string)
+	for _, task := range tasks {
+		tasksMap[task.ID] = task
+		localIdMap[task.LocalId] = task.ID
+	}
+
+	// Create items map
+	itemsMap := make(map[string]Item)
+	for _, item := range items {
+		itemsMap[item.ID] = item
+	}
+
+	// Store in sprint cache
+	ds.sprintCache[sprintID] = TaskCache{
+		Tasks:      tasksMap,
+		LocalIdMap: localIdMap,
+		RawItems:   itemsMap,
+		Users:      make(map[string]User),
+		Sprints:    []Sprint{},
+		Timestamp:  time.Now(),
+	}
+
+	if err := ds.Save(); err != nil {
+		fmt.Printf("Failed to save cache: %v\n", err)
+	}
+}
+
+// GetCachedSprintItems retrieves cached sprint items
+func (ds *DataStore) GetCachedSprintItems(sprintID string) ([]Task, time.Time, bool) {
+	if err := ds.Load(); err != nil {
+		return []Task{}, time.Time{}, false
+	}
+
+	if cached, exists := ds.sprintCache[sprintID]; exists {
+		var tasks []Task
+		for _, task := range cached.Tasks {
+			tasks = append(tasks, task)
+		}
+		return tasks, cached.Timestamp, true
+	}
+	return []Task{}, time.Time{}, false
 }
 
 // StoreTasksRequest caches a task request result
