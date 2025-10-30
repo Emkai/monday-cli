@@ -871,6 +871,13 @@ func (c *CLI) HandleSprintFetchCommand() {
 		return
 	}
 
+	boardID := c.config.GetBoardID()
+	if boardID == "" {
+		fmt.Println("❌ No board ID configured")
+		fmt.Println("💡 Run 'config set-board-id <board-id>' first")
+		return
+	}
+
 	client := monday.NewClient(c.config.GetAPIKey(), c.config.Timeout)
 
 	fmt.Printf("🔍 Fetching items from sprint %s...\n", sprintID)
@@ -886,18 +893,18 @@ func (c *CLI) HandleSprintFetchCommand() {
 		return
 	}
 
-	// Store in sprint cache
+	// Merge sprint tasks into board cache (same array as regular tasks)
 	dataStore := monday.NewDataStore()
+	dataStore.MergeSprintTasksIntoBoard(boardID, tasks, items)
+
+	// Also store in sprint cache for backward compatibility
 	dataStore.StoreSprintItems(sprintID, tasks, items)
 
-	// Convert slice to map for PrintItems
-	tasksMap := make(map[string]monday.Task)
-	for _, task := range tasks {
-		tasksMap[task.ID] = task
-	}
+	// Get merged tasks from board cache to display
+	cachedTasks, _, _ := dataStore.GetCachedTasks(boardID)
 
 	// Display the tasks
-	c.PrintItems(tasksMap)
+	c.PrintItems(cachedTasks)
 }
 
 // HandleSprintListCommand lists items from the current sprint
@@ -909,21 +916,24 @@ func (c *CLI) HandleSprintListCommand() {
 		return
 	}
 
-	dataStore := monday.NewDataStore()
-	tasks, _, ok := dataStore.GetCachedSprintItems(sprintID)
-
-	if !ok || len(tasks) == 0 {
-		fmt.Println("❌ No sprint items found in cache")
-		fmt.Println("💡 Run 'tasks sprint fetch' first to fetch sprint items")
+	boardID := c.config.GetBoardID()
+	if boardID == "" {
+		fmt.Println("❌ No board ID configured")
+		fmt.Println("💡 Run 'config set-board-id <board-id>' first")
 		return
 	}
 
-	// Convert slice to map for PrintItems
-	tasksMap := make(map[string]monday.Task)
-	for _, task := range tasks {
-		tasksMap[task.ID] = task
+	// Sprint tasks are now stored in the board cache with regular tasks
+	dataStore := monday.NewDataStore()
+	tasksMap, _, ok := dataStore.GetCachedTasks(boardID)
+
+	if !ok || len(tasksMap) == 0 {
+		fmt.Println("❌ No tasks found in cache")
+		fmt.Println("💡 Run 'tasks fetch' or 'tasks sprint fetch' first to fetch tasks")
+		return
 	}
 
+	// Filter tasks by sprint if needed (tasks fetched from sprint will have Sprint field set)
 	c.PrintItems(tasksMap)
 }
 

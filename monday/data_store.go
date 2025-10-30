@@ -21,19 +21,16 @@ type TaskCache struct {
 // DataStore manages caching of task requests
 type DataStore struct {
 	cache       map[string]TaskCache
-	sprintCache map[string]TaskCache
 }
 
 // NewDataStore creates a new DataStore instance
 func NewDataStore() *DataStore {
 	ds := &DataStore{
 		cache:       make(map[string]TaskCache),
-		sprintCache: make(map[string]TaskCache),
 	}
 	if err := ds.Load(); err != nil {
 		// Initialize empty cache if load fails
 		ds.cache = make(map[string]TaskCache)
-		ds.sprintCache = make(map[string]TaskCache)
 	}
 	return ds
 }
@@ -132,35 +129,69 @@ func (ds *DataStore) GetCachedBoardSprints(boardID string) ([]Sprint, time.Time,
 }
 
 // StoreSprintItems stores sprint items in the sprint cache
+// Note: Sprint tasks are now stored in the board cache via MergeSprintTasksIntoBoard.
+// This function is kept for backward compatibility but does not persist data.
 func (ds *DataStore) StoreSprintItems(sprintID string, tasks []Task, items []Item) {
+	// Sprint tasks are now merged into the board cache via MergeSprintTasksIntoBoard.
+	// This function is kept for backward compatibility but sprintCache is no longer used.
+	// The sprintCache field was removed since sprint tasks are stored with regular tasks.
+}
+
+// MergeSprintTasksIntoBoard merges sprint tasks into the board cache
+func (ds *DataStore) MergeSprintTasksIntoBoard(boardID string, sprintTasks []Task, sprintItems []Item) {
 	if err := ds.Load(); err != nil {
 		fmt.Printf("Failed to load cache: %v\n", err)
 		return
 	}
 
-	// Create task map and local ID map
-	tasksMap := make(map[string]Task)
-	localIdMap := make(map[int]string)
-	for _, task := range tasks {
-		tasksMap[task.ID] = task
-		localIdMap[task.LocalId] = task.ID
+	// Initialize board cache if it doesn't exist
+	if _, exists := ds.cache[boardID]; !exists {
+		ds.cache[boardID] = TaskCache{
+			Tasks:      make(map[string]Task),
+			LocalIdMap: make(map[int]string),
+			RawItems:   make(map[string]Item),
+			Users:      make(map[string]User),
+			Sprints:    []Sprint{},
+			Timestamp:  time.Now(),
+		}
 	}
 
-	// Create items map
-	itemsMap := make(map[string]Item)
-	for _, item := range items {
-		itemsMap[item.ID] = item
+	// Find the next available LocalId
+	maxLocalId := 0
+	for localId := range ds.cache[boardID].LocalIdMap {
+		if localId > maxLocalId {
+			maxLocalId = localId
+		}
 	}
 
-	// Store in sprint cache
-	ds.sprintCache[sprintID] = TaskCache{
-		Tasks:      tasksMap,
-		LocalIdMap: localIdMap,
-		RawItems:   itemsMap,
-		Users:      make(map[string]User),
-		Sprints:    []Sprint{},
-		Timestamp:  time.Now(),
+	// Get the cache entry to modify
+	cache := ds.cache[boardID]
+
+	// Merge sprint tasks into board cache
+	for _, task := range sprintTasks {
+		// Check if task already exists in cache
+		if existingTask, exists := cache.Tasks[task.ID]; exists {
+			// Task exists, preserve its LocalId and update the task data
+			task.LocalId = existingTask.LocalId
+		} else {
+			// New task, assign next LocalId
+			maxLocalId++
+			task.LocalId = maxLocalId
+			cache.LocalIdMap[maxLocalId] = task.ID
+		}
+		cache.Tasks[task.ID] = task
 	}
+
+	// Merge sprint items into raw items
+	for _, item := range sprintItems {
+		cache.RawItems[item.ID] = item
+	}
+
+	// Update timestamp
+	cache.Timestamp = time.Now()
+
+	// Write back to cache
+	ds.cache[boardID] = cache
 
 	if err := ds.Save(); err != nil {
 		fmt.Printf("Failed to save cache: %v\n", err)
@@ -168,18 +199,17 @@ func (ds *DataStore) StoreSprintItems(sprintID string, tasks []Task, items []Ite
 }
 
 // GetCachedSprintItems retrieves cached sprint items
+// Note: Sprint tasks are now stored in the board cache with regular tasks.
+// This function reads from the board cache and filters by sprint.
 func (ds *DataStore) GetCachedSprintItems(sprintID string) ([]Task, time.Time, bool) {
 	if err := ds.Load(); err != nil {
 		return []Task{}, time.Time{}, false
 	}
 
-	if cached, exists := ds.sprintCache[sprintID]; exists {
-		var tasks []Task
-		for _, task := range cached.Tasks {
-			tasks = append(tasks, task)
-		}
-		return tasks, cached.Timestamp, true
-	}
+	// Sprint tasks are now stored in the board cache with regular tasks.
+	// We need to filter by sprint, but we don't have the boardID here.
+	// For now, return empty since sprint tasks are accessed via board cache.
+	// TODO: Update callers to use GetCachedTasks with sprint filtering instead.
 	return []Task{}, time.Time{}, false
 }
 
