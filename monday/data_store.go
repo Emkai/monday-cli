@@ -20,13 +20,13 @@ type TaskCache struct {
 
 // DataStore manages caching of task requests
 type DataStore struct {
-	cache       map[string]TaskCache
+	cache map[string]TaskCache
 }
 
 // NewDataStore creates a new DataStore instance
 func NewDataStore() *DataStore {
 	ds := &DataStore{
-		cache:       make(map[string]TaskCache),
+		cache: make(map[string]TaskCache),
 	}
 	if err := ds.Load(); err != nil {
 		// Initialize empty cache if load fails
