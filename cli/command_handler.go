@@ -9,6 +9,20 @@ import (
 	"time"
 )
 
+type CommandString string
+
+const (
+	CSHelp CommandString = "help"
+	CSConfig CommandString = "config"
+	CSTasks CommandString = "tasks"
+	CSTask CommandString = "task"
+	CSUser CommandString = "user"
+)
+
+func (cs *CommandString) ToString() string {
+	return string(*cs)
+} 
+
 func (c *CLI) HandleCommand() {
 	switch c.command.Command {
 	case "help", "h":

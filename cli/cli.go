@@ -39,6 +39,10 @@ func NewCLI() *CLI {
 	return c
 }
 
+func (c *CLI) SetCommand( command Command ){
+	c.command = command
+}
+
 func (c *CLI) ReadCommand() Command {
 	if len(os.Args) < 2 {
 		return Command{
