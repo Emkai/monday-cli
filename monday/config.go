@@ -29,7 +29,6 @@ type Config struct {
 	APIKey        string  `json:"api_key"`
 	BaseURL       string  `json:"base_url"`
 	Timeout       int     `json:"timeout_seconds"`
-	OwnerEmail    string  `json:"owner_email"`
 	BoardID       string  `json:"board_id"`
 	SprintID      string  `json:"sprint_id"`
 	SprintBoardId string  `json:"sprint_board_id"`
@@ -45,7 +44,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		BaseURL:       "https://api.monday.com/v2",
 		Timeout:       30,
-		OwnerEmail:    "",
 		BoardID:       "",
 		SprintID:      "",
 		SprintBoardId: "",
@@ -131,16 +129,6 @@ func (c *Config) SetAPIKey(apiKey string) {
 // GetAPIKey returns the API key
 func (c *Config) GetAPIKey() string {
 	return c.APIKey
-}
-
-// SetOwnerEmail sets the owner email in the configuration
-func (c *Config) SetOwnerEmail(ownerEmail string) {
-	c.OwnerEmail = ownerEmail
-}
-
-// GetOwnerEmail returns the owner email
-func (c *Config) GetOwnerEmail() string {
-	return c.OwnerEmail
 }
 
 // SetBoardID sets the board ID in the configuration
@@ -293,8 +281,6 @@ func (c *Config) SetUserInfo(user *User) {
 	c.UserName = user.Name
 	c.UserEmail = user.Email
 	c.UserTitle = user.Title
-	// Also set the owner email to the user's email for backward compatibility
-	c.OwnerEmail = user.Email
 }
 
 // GetUserInfo returns the user information from the configuration

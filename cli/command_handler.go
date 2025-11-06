@@ -12,18 +12,23 @@ import (
 type CommandString string
 
 const (
-	CSHelp CommandString = "help"
+	CSHelp   CommandString = "help"
 	CSConfig CommandString = "config"
-	CSTasks CommandString = "tasks"
-	CSTask CommandString = "task"
-	CSUser CommandString = "user"
+	CSTasks  CommandString = "tasks"
+	CSTask   CommandString = "task"
+	CSUser   CommandString = "user"
 )
 
 func (cs *CommandString) ToString() string {
 	return string(*cs)
-} 
+}
 
 func (c *CLI) HandleCommand() {
+
+	if err := c.ShowMissingConfig(); err != nil {
+		return
+	}
+
 	switch c.command.Command {
 	case "help", "h":
 		c.ShowHelp()
@@ -40,15 +45,32 @@ func (c *CLI) HandleCommand() {
 	}
 }
 
+func (c *CLI) ShowMissingConfig() error {
+	if len(c.config.APIKey) == 0 {
+		fmt.Println("  config (cfg) set-api-key <api-key>    Sets APIkey used to authenticate at monday")
+		fmt.Println("  help (h)       Show this help")
+		fmt.Println("")
+		return fmt.Errorf("missing api key")
+
+	}
+	if len(c.config.UserID) == 0 {
+		fmt.Println("  user (u) information (i)              Used to fetch user information, needs to be done before using the tool.")
+		fmt.Println("  help (h)       Show this help")
+		fmt.Println("")
+		return fmt.Errorf("missing user information")
+	}
+	return nil
+}
+
 func (c *CLI) ShowHelp() {
 	fmt.Println("Monday CLI - Task Management Tool")
 	fmt.Println("")
 	fmt.Println("Usage: <command>")
 	fmt.Println("")
 	fmt.Println("Commands:")
+	fmt.Println("  user (u)       User information and setup")
 	fmt.Println("  tasks (ts)     Show your assigned tasks")
 	fmt.Println("  task (t)       Specific task operations")
-	fmt.Println("  user (u)       User information")
 	fmt.Println("  config (cfg)   Manage configuration")
 	fmt.Println("  help (h)       Show this help")
 	fmt.Println("")
