@@ -16,4 +16,5 @@ func main() {
 	}
 	fmt.Println("CLI created successfully")
 	c.HandleCommand()
+	fmt.Println("done")
 }
