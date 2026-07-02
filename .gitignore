@@ -1,4 +1,6 @@
-go.sum
 monday-cli
 mon
 *.exe
+
+# Build output
+bin/

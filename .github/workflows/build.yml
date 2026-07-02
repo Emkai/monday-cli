@@ -35,15 +35,13 @@ jobs:
         # Create release directory
         mkdir -p release
 
-        go mod tidy
-        
         # Build for different platforms
-        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/monday-cli-linux-amd64 .
-        GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release/monday-cli-linux-arm64 .
-        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o release/monday-cli-darwin-amd64 .
-        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o release/monday-cli-darwin-arm64 .
-        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o release/monday-cli-windows-amd64.exe .
-        GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o release/monday-cli-windows-arm64.exe .
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/mon-linux-amd64 ./cmd/mon
+        GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release/mon-linux-arm64 ./cmd/mon
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o release/mon-darwin-amd64 ./cmd/mon
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o release/mon-darwin-arm64 ./cmd/mon
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o release/mon-windows-amd64.exe ./cmd/mon
+        GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o release/mon-windows-arm64.exe ./cmd/mon
         
     - name: Create checksums
       run: |

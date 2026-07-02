@@ -1,98 +1,93 @@
-# Monday.com CLI
+# mon — a Monday.com CLI
 
-A powerful command-line tool for managing your Monday.com tasks with local caching, smart indexing, and efficient task operations.
+A small, fast CLI over the Monday.com API. Sign in once, register the boards you
+care about under **names** (favorites), then list / fetch / create / edit items
+with **server-side filtering** — including "just the items assigned to me".
 
+Because every team's boards use different column IDs, each favorite stores its own
+**column-role map** (auto-detected when you add it), so the same generic commands
+work across your Tasks, Bugs, and Sprints boards without anything hardcoded.
 
-## ✨ Features
+## Build & install
 
-- **🚀 Local Index System**: Tasks are numbered with user-friendly indices (1, 2, 3...) instead of long Monday.com IDs
-- **💾 Smart Caching**: Tasks are cached locally for fast access and offline viewing
-- **📊 Intelligent Sorting**: Tasks are sorted by status, priority, and type for optimal workflow
-- **🎯 Quick Operations**: Show, edit, and manage tasks with simple commands
-
-## Quick Start
-
-1. **Build the tool:**
 ```bash
-go mod tidy
-go build -o mon .
-```
-> **Note for Windows users**: You can name the executable `mon.exe` for easier usage on Windows.
-
-2. **Configure it:**
-```bash
-mon config set-api-key <your-api-key>
-mon config set-board-id <your-board-id>
-mon config set-sprint-id <your-sprint-id>  # No implementation for sprints yet, still to come
+make build      # -> ./bin/mon
+make install    # -> /usr/bin/mon   (uses sudo)
+# or:
+go build -o bin/mon ./cmd/mon
 ```
 
-3. **View your tasks:**
+## Getting started
+
 ```bash
-mon tasks list
+# 1. Sign in (token from https://<team>.monday.com/apps/manage/tokens).
+#    Reads $MONDAY_API_TOKEN if you don't pass one.
+mon login <api-token>
+
+# 2. Find the boards you want and register them under names.
+mon board discover                     # list boards you can access
+mon board add 2116466717 --name tasks --default
+mon board add 2116466713 --name bugs
+mon board add 2116466722 --name sprint
+#   (run `mon board add` with no ID to pick interactively)
+
+# 3. Use them.
+mon items f -b tasks -u                # fetch MY tasks (server-side filtered)
+mon items f -b bugs  -u                # fetch bugs I reported
+mon items ls -b tasks                  # re-list from the local cache (offline)
 ```
 
-## 📋 Commands
+Set a default board (`mon board default tasks`) and you can drop `-b` for the
+common case: `mon items f -u`.
 
-### Task Management
-- `mon tasks list` - Show your cached tasks with local indices
-- `mon tasks fetch` - Fetch fresh tasks from Monday.com
-- `mon task show <index>` - Show details of a specific task
-- `mon task create <name> [flags]` - Create a new task
-- `mon task edit <index> [flags]` - Edit an existing task
+## Commands
 
-### Configuration
-- `mon config show` - Display current configuration
-- `mon config set-api-key <key>` - Set your Monday.com API key
-- `mon config set-board-id <id>` - Set your board ID
-- `mon config set-sprint-id <id>` - Set your sprint ID (optional)
+### Auth
+- `mon login [TOKEN]` — store the token (or `$MONDAY_API_TOKEN`) and record your identity
+- `mon whoami [--refresh]` — show the signed-in user
 
-### User Management
-- `mon user info` - Show your user information
+### Boards (favorites)
+- `mon board discover [--all] [--workspace ID]` — list accessible boards
+- `mon board add [BOARD_ID] [--name N] [--default]` — register a board, auto-detecting its columns
+- `mon board ls` — list your registered boards
+- `mon board show <name>` — show a board's detected column-role map and labels
+- `mon board set-col <name> <role> <columnId>` — override a detected column (roles: people, status, priority, type, sprint, active)
+- `mon board default <name>` — set the default board
+- `mon board rm <name>` — remove a favorite
 
-## 🎯 Task Creation & Editing
+### Items
+- `mon items f [-b name] [-u] [--status S] [--priority P] [--type T] [--sprint X] [--limit N]` — fetch from the API (filtered server-side) and cache
+- `mon items ls [-b name] [-u] [--status S] [--priority P] [--type T]` — list from the local cache (offline)
+- `mon items show <localId> [-b name]` — show one cached item by its short id
+- `mon items create <name…> [-b name] [--status/-s S] [--priority/-p P] [--type/-t T] [--assign me]`
+- `mon items edit <localId> [-b name] [--status/-s S] [--priority/-p P] [--type/-t T]`
 
-### Create Tasks with Flags
-```bash
-# Create a bug task with high priority
-mon task create "Fix login issue" -t b -p h -s p
+`-u/--me` filters to items assigned to you using Monday's `assigned_to_me` token on
+the board's people column (server-side). `--status/--priority/--type` take the
+label text as shown in Monday (e.g. `--status "In Progress"`); the CLI translates
+it to the right index for the board. Boards that lack a role (e.g. the Bugs board
+has no Type column) report a clear error rather than filtering silently.
 
-# Create a feature task
-mon task create "Add dark mode" -t f -p m -s p
-```
+### Sprints
+- `mon sprint ls [-b name]` — list sprints (marks the active one)
+- `mon sprint active [-b name]` — show the active sprint(s)
 
-### Edit Tasks with Flags
-```bash
-# Update task status and priority
-mon task edit 1 -s d -p c
+### Config
+- `mon config show` — show the current config (token redacted)
+- `mon config path` — print the config file path
 
-# Change task type and status
-mon task edit 5 -t f -s p
-```
+## Configuration & data
 
-### Available Flags
-- **Status**: `-s` or `-status` (done/d, in progress/p, stuck/s, waiting review/r, ready for testing/t, removed/rm)
-- **Priority**: `-p` or `-priority` (critical/c, high/h, medium/m, low/l)
-- **Type**: `-t` or `-type` (bug/b, feature/f, test/t, security/s, quality/q)
+- **Config**: `~/.config/monday-cli/config.json` (override with `$MONDAY_CONFIG`). Holds
+  your token, identity, and named favorites with their column-role maps.
+- **Cache**: `~/.cache/monday-cli/tasks.json` (override with `$MONDAY_CACHE`). The last
+  fetched items per board, with the short LocalID index used by `show`/`edit`.
+- **Env**: `MONDAY_API_TOKEN` overrides the stored token; `NO_COLOR` disables color.
 
-## 🏷️ Task Display Format
+A legacy config from the previous version (flat `api_key` / `board_id`) is migrated
+automatically for the token and identity — re-register boards with `mon board add`.
 
-Tasks display as: `1. 🐛 [🔄 🔴] Fix login issue`
+## Development
 
-- **Number**: Local index for easy reference
-- **Type Icon**: 🐛 Bug, ✨ Feature, 🧪 Test, 🔒 Security, 📈 Quality, 📝 Other
-- **Status**: 🔄 In Progress, ✅ Done, 🚫 Blocked, 👀 Review, 🧪 Testing, 🗑️ Removed
-- **Priority**: 🔴 Critical, 🟡 High, 🔵 Medium, 🟢 Low, ⚪ Default
-
-## 🔧 Getting Credentials
-
-- **API Key**: Get from URL: `https://example.monday.com/apps/manage/tokens` (replace "example" with your team name)
-- **Board ID**: Found in your board URL: `https://example.monday.com/boards/1234567890`
-- **Sprint ID**: Optional, for filtering tasks by sprint
-
-## 🛠️ Development
-
-Built with Go, featuring:
-- **GraphQL Integration**: Direct Monday.com API integration
-- **Efficient Caching**: JSON-based local storage
-- **Smart Parsing**: Robust command-line argument parsing
-- **Error Handling**: Comprehensive error messages and validation
+Go + Cobra. `monday/` is the API client, domain models, config, cache, and column
+detection; `cmd/mon/` is the Cobra command layer. `make test` / `make vet`.
